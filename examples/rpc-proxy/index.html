@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UO RPC Proxy</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2128;
+    --surface3: #21262d;
+    --border:   #30363d;
+    --border2:  #21262d;
+    --muted:    #8b949e;
+    --muted2:   #484f58;
+    --text:     #c9d1d9;
+    --text-hi:  #e6edf3;
+    --accent:   #58a6ff;
+    --accent2:  #d2a8ff;
+    --green:    #56d364;
+    --orange:   #f0883e;
+    --red:      #f85149;
+    --blue:     #79c0ff;
+    --yellow:   #e3b341;
+
+    --row-s2c:    #001525;
+    --row-s2c-hv: #002035;
+    --row-c2s:    #1f1500;
+    --row-c2s-hv: #2e1e00;
+
+    --left-w: 230px;
+    --ctrl-h: 88px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* ════════════════════════════════════════════════
+     LEFT PANEL  (session list + char info)
+  ════════════════════════════════════════════════ */
+  #left-panel {
+    width: var(--left-w); min-width: 160px; flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ── section header ── */
+  .panel-hdr {
+    padding: 8px 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    color: var(--muted); text-transform: uppercase;
+    border-bottom: 1px solid var(--border2);
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  .panel-hdr .hdr-title { flex: 1; }
+
+  #ws-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted2); flex-shrink: 0; transition: background .3s;
+  }
+  #ws-dot.connected { background: var(--green); }
+  #ws-dot.error     { background: var(--red); }
+
+  /* ── session list ── */
+  #session-list { list-style: none; overflow-y: auto; flex-shrink: 0; max-height: 45%; }
+  #session-list li {
+    padding: 9px 13px; cursor: pointer;
+    border-bottom: 1px solid var(--border2);
+    transition: background .15s; font-size: 12px;
+    border-left: 3px solid transparent;
+  }
+  #session-list li:hover  { background: var(--surface2); }
+  #session-list li.active { background: #1f3a5f; border-left-color: var(--accent); }
+
+  .sess-id   { font-weight: 700; color: var(--text-hi); font-size: 13px; }
+  .sess-char { color: var(--accent2); margin-top: 2px; font-size: 11px;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-pos  { color: var(--muted); margin-top: 2px; font-size: 10px;
+               font-variant-numeric: tabular-nums; }
+
+  #no-sessions { padding: 18px 13px; color: var(--muted2); font-size: 12px;
+                 text-align: center; cursor: default; }
+  #no-sessions:hover { background: none; border-left-color: transparent; }
+
+  /* ── char info block ── */
+  #char-info {
+    flex: 1; overflow-y: auto;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; gap: 4px;
+  }
+  .info-label { color: var(--muted); flex-shrink: 0; }
+  .info-value { color: var(--text-hi); font-variant-numeric: tabular-nums;
+                text-align: right; overflow: hidden; text-overflow: ellipsis; }
+  .info-value.accent  { color: var(--accent); }
+  .info-value.accent2 { color: var(--accent2); }
+  .info-value.muted   { color: var(--muted2); font-style: italic; }
+
+  /* ════════════════════════════════════════════════
+     RIGHT SIDE  (flex-col: controls + output)
+  ════════════════════════════════════════════════ */
+  #right-side {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+  }
+
+  /* ── CONTROLS (top fixed-height zone) ── */
+  #controls {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .ctrl-row {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+
+  .btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 4px 11px;
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .btn:hover { background: var(--border); color: var(--text); }
+  .btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
+
+  #btn-subscribe.on {
+    color: var(--green); border-color: var(--green); background: #0a1f0a;
+  }
+  #btn-subscribe.on:hover { background: #112a11; }
+
+  #btn-hex-mode.on {
+    color: var(--accent2); border-color: var(--accent2); background: #130020;
+  }
+
+  /* filter input */
+  #filter-box {
+    display: flex; align-items: center;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; transition: border-color .2s;
+    flex: 1; min-width: 120px; max-width: 260px;
+  }
+  #filter-box:focus-within { border-color: var(--accent); }
+  #filter-box.filter-error  { border-color: var(--red); }
+  #filter-box.filter-active { border-color: var(--accent2); }
+  #filter-input {
+    background: transparent; border: none; color: var(--text);
+    padding: 3px 7px; font-family: inherit; font-size: 12px;
+    flex: 1; min-width: 0; outline: none;
+  }
+  #filter-input::placeholder { color: var(--muted2); }
+  #btn-filter-clear {
+    background: none; border: none; color: var(--muted2);
+    cursor: pointer; font-size: 14px; padding: 0 7px; flex-shrink: 0;
+    transition: color .15s; line-height: 1;
+  }
+  #btn-filter-clear:hover { color: var(--text-hi); }
+
+  #pkt-count { font-size: 11px; color: var(--muted2); flex-shrink: 0; }
+
+  /* serial input */
+  #serial-input {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    padding: 3px 8px; font-family: inherit; font-size: 12px;
+    width: 120px; outline: none; transition: border-color .2s;
+  }
+  #serial-input:focus { border-color: var(--accent); }
+  #serial-input::placeholder { color: var(--muted2); }
+
+  .ctrl-sep {
+    width: 1px; height: 18px; background: var(--border); flex-shrink: 0;
+  }
+
+  /* ── Compass ── */
+  #compass {
+    display: grid;
+    grid-template-columns: repeat(3, 28px);
+    grid-template-rows:    repeat(3, 28px);
+    gap: 2px; flex-shrink: 0;
+  }
+  .cmp-btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 5px;
+    font-family: inherit; font-size: 13px; line-height: 1;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s, border-color .12s;
+    user-select: none;
+  }
+  .cmp-btn:hover   { background: var(--border); color: var(--text-hi); }
+  .cmp-btn:active  { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .cmp-btn:disabled { opacity: .35; cursor: default; pointer-events: none; }
+  .cmp-center { /* empty center cell */ background: none; border: none; cursor: default; }
+
+  #raw-step-toggle {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--muted); cursor: pointer; flex-shrink: 0;
+  }
+  #raw-step-toggle input { accent-color: var(--orange); cursor: pointer; }
+
+  /* ── OUTPUT (bottom flex zone) ── */
+  #output {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* tab bar */
+  #tab-bar {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    padding: 6px 16px; font-family: inherit; font-size: 12px; font-weight: 600;
+    color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; transition: color .15s, border-color .15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text-hi); border-bottom-color: var(--accent); }
+
+  /* tab panes */
+  .tab-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .tab-pane.active { display: flex; }
+
+  /* ── hint (no session) ── */
+  #hint {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--muted2); font-size: 13px; text-align: center; line-height: 1.8;
+  }
+  #hint .hint-title { font-size: 15px; color: var(--muted); margin-bottom: 6px; }
+
+  /* ── packet table (Packets tab) ── */
+  #table-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th {
+    position: sticky; top: 0; background: var(--surface);
+    color: var(--muted); font-weight: 600; text-align: left;
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; user-select: none;
+  }
+  tbody tr { border-bottom: 1px solid var(--surface); transition: background .1s; }
+  tbody tr.row-s2c       { background: var(--row-s2c); }
+  tbody tr.row-c2s       { background: var(--row-c2s); }
+  tbody tr.row-s2c:hover { background: var(--row-s2c-hv); }
+  tbody tr.row-c2s:hover { background: var(--row-c2s-hv); }
+  td { padding: 3px 10px; vertical-align: top; white-space: nowrap; }
+
+  .col-time { color: var(--muted2); font-variant-numeric: tabular-nums; }
+  .col-dir-s2c { color: var(--blue); }
+  .col-dir-c2s { color: var(--orange); }
+  .col-id   { font-weight: 700; color: var(--accent2); }
+  .col-len  { color: var(--muted2); text-align: right; }
+  .col-data { white-space: pre-wrap; overflow-wrap: break-word;
+              max-width: 800px; color: var(--text); }
+  .col-data.is-hex    { color: var(--muted); }
+  .col-data.is-parsed { color: var(--text); }
+  .col-data.is-unknown { color: var(--muted2); font-style: italic; }
+
+  /* ── mobiles table ── */
+  #mob-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+  #mob-hint { padding: 20px; color: var(--muted2); font-size: 12px; text-align: center; }
+
+  .mob-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .mob-table thead th {
+    position: sticky; top: 0; background: var(--surface);
+    color: var(--muted); font-weight: 600; text-align: left;
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; user-select: none;
+  }
+  .mob-table tbody tr.mob-row {
+    border-bottom: 1px solid var(--surface2);
+    transition: background .1s; cursor: pointer;
+  }
+  .mob-table tbody tr.mob-row:hover { background: var(--surface2); }
+  .mob-table tbody tr.mob-row.expanded { background: #1a1f2e; }
+  .mob-table tbody tr.eq-row { background: #12161e; }
+  .mob-table tbody tr.eq-row td { padding: 0; }
+  .mob-table td { padding: 4px 10px; vertical-align: middle; }
+
+  .mob-serial  { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .mob-graphic { color: var(--accent2); }
+  .mob-pos     { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .mob-notor   { font-weight: 600; }
+  .notor-0 { color: var(--muted2); }   /* invalid */
+  .notor-1 { color: var(--blue); }     /* innocent */
+  .notor-2 { color: var(--green); }    /* ally */
+  .notor-3 { color: var(--muted); }    /* attackable */
+  .notor-4 { color: var(--muted); }    /* criminal */
+  .notor-5 { color: var(--orange); }   /* enemy */
+  .notor-6 { color: var(--red); }      /* murderer */
+  .notor-7 { color: var(--muted2); }   /* translucent */
+
+  .btn-use {
+    background: none; border: 1px solid var(--border2);
+    color: var(--muted); border-radius: 4px; padding: 2px 8px;
+    font-family: inherit; font-size: 11px; cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .btn-use:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* equipment sub-table */
+  .eq-inner { padding: 4px 10px 8px 32px; }
+  .eq-subtable { font-size: 11px; border-collapse: collapse; width: 100%; }
+  .eq-subtable th {
+    color: var(--muted2); font-weight: 600; text-align: left;
+    padding: 2px 8px; border-bottom: 1px solid var(--border2);
+  }
+  .eq-subtable td { padding: 2px 8px; color: var(--text); }
+  .eq-subtable tr:hover td { color: var(--text-hi); }
+  .eq-serial  { color: var(--accent); font-size: 10px; }
+  .eq-graphic { color: var(--accent2); }
+  .eq-layer   { color: var(--muted); }
+  .eq-empty   { color: var(--muted2); font-style: italic; padding: 4px 8px; }
+
+  /* ── items table ── */
+  #item-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+  #item-hint { padding: 20px; color: var(--muted2); font-size: 12px; text-align: center; }
+
+  .item-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .item-table thead th {
+    position: sticky; top: 0; background: var(--surface);
+    color: var(--muted); font-weight: 600; text-align: left;
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; user-select: none;
+  }
+  .item-table tbody tr {
+    border-bottom: 1px solid var(--surface2);
+    transition: background .1s; cursor: pointer;
+  }
+  .item-table tbody tr:hover { background: var(--surface2); }
+  .item-table td { padding: 4px 10px; vertical-align: middle; }
+  .item-serial  { color: var(--accent); font-size: 11px; }
+  .item-graphic { color: var(--accent2); }
+  .item-pos     { color: var(--muted); font-size: 11px; }
+
+  /* ── scrollbar ── */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     LEFT PANEL
+══════════════════════════════════════════ -->
+<div id="left-panel">
+
+  <div class="panel-hdr">
+    <span id="ws-dot" title="Connecting…"></span>
+    <span class="hdr-title">Sessions</span>
+  </div>
+
+  <ul id="session-list">
+    <li id="no-sessions">No active sessions</li>
+  </ul>
+
+  <!-- character / session info -->
+  <div id="char-info">
+    <!-- filled by JS when session is attached -->
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════
+     RIGHT SIDE
+══════════════════════════════════════════ -->
+<div id="right-side">
+
+  <!-- ── CONTROLS ── -->
+  <div id="controls">
+
+    <!-- row 1: packet controls -->
+    <div class="ctrl-row">
+      <button id="btn-subscribe" class="btn" disabled>Subscribe</button>
+      <button id="btn-clear"     class="btn">Clear</button>
+      <button id="btn-hex-mode"  class="btn" title="Toggle hex / parsed JSON">Parsed</button>
+      <div id="filter-box">
+        <input id="filter-input" type="text"
+               placeholder="filter: 0x78 0x20 …" spellcheck="false">
+        <button id="btn-filter-clear" title="Clear filter">&times;</button>
+      </div>
+      <span id="pkt-count">0 pkts</span>
+    </div>
+
+    <!-- row 2: entity controls -->
+    <div class="ctrl-row">
+      <button id="btn-get-mobiles" class="btn" disabled>Get Mobiles</button>
+      <button id="btn-get-items"   class="btn" disabled>Get Items</button>
+      <div class="ctrl-sep"></div>
+      <input id="serial-input" type="text" placeholder="serial (hex/dec)" spellcheck="false">
+      <button id="btn-get-mobile"    class="btn" disabled>Get Mobile</button>
+      <button id="btn-get-equipment" class="btn" disabled>Equipment</button>
+      <button id="btn-use-object"    class="btn" disabled>Use Object</button>
+    </div>
+
+    <!-- row 3: compass -->
+    <div class="ctrl-row" style="align-items:center; gap:10px;">
+      <div id="compass">
+        <button class="cmp-btn" id="cmp-nw" data-h="7" disabled title="NW">&#x2196;</button>
+        <button class="cmp-btn" id="cmp-n"  data-h="0" disabled title="N" >&#x2191;</button>
+        <button class="cmp-btn" id="cmp-ne" data-h="1" disabled title="NE">&#x2197;</button>
+        <button class="cmp-btn" id="cmp-w"  data-h="6" disabled title="W" >&#x2190;</button>
+        <div class="cmp-center"></div>
+        <button class="cmp-btn" id="cmp-e"  data-h="2" disabled title="E" >&#x2192;</button>
+        <button class="cmp-btn" id="cmp-sw" data-h="5" disabled title="SW">&#x2199;</button>
+        <button class="cmp-btn" id="cmp-s"  data-h="4" disabled title="S" >&#x2193;</button>
+        <button class="cmp-btn" id="cmp-se" data-h="3" disabled title="SE">&#x2198;</button>
+      </div>
+      <label id="raw-step-toggle" title="Skip passability validation">
+        <input type="checkbox" id="chk-raw-step">
+        Raw step
+      </label>
+    </div>
+
+  </div>
+
+  <!-- ── OUTPUT ── -->
+  <div id="output">
+
+    <!-- hint shown before session is selected -->
+    <div id="hint">
+      <div>
+        <div class="hint-title">Select a session</div>
+        Connect a UO client, then pick a session from the sidebar.
+      </div>
+    </div>
+
+    <!-- tab bar + panes (hidden until session attached) -->
+    <div id="tab-bar" style="display:none">
+      <button class="tab-btn active" data-tab="packets">Packets</button>
+      <button class="tab-btn"        data-tab="mobiles">Mobiles</button>
+      <button class="tab-btn"        data-tab="items">Items</button>
+    </div>
+
+    <!-- Packets tab -->
+    <div id="tab-packets" class="tab-pane active" style="display:none">
+      <div id="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:105px">Time</th>
+              <th style="width:46px">Dir</th>
+              <th style="width:56px">ID</th>
+              <th style="width:44px;text-align:right">Len</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody id="pkt-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Mobiles tab -->
+    <div id="tab-mobiles" class="tab-pane" style="display:none">
+      <div id="mob-wrap">
+        <div id="mob-hint">Press "Get Mobiles" to load.</div>
+      </div>
+    </div>
+
+    <!-- Items tab -->
+    <div id="tab-items" class="tab-pane" style="display:none">
+      <div id="item-wrap">
+        <div id="item-hint">Press "Get Items" to load.</div>
+      </div>
+    </div>
+
+  </div><!-- #output -->
+
+</div><!-- #right-side -->
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const MAX_ROWS = 2000;
+const POLL_MS  = 3000;
+
+const NOTORIETY_NAMES = ['Invalid','Innocent','Ally','Attackable','Criminal','Enemy','Murderer','Translucent'];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let activeSessionId = null;
+let ws              = null;
+let reconnectTimer  = null;
+let pollTimer       = null;
+let sessions        = {};
+
+let subscribed  = false;
+let hexMode     = false;
+let filterIds   = null;
+let pktCount    = 0;
+let autoScroll  = true;
+let currentTab  = 'packets';
+
+// expanded mobile rows (serial -> bool)
+let expandedMobs = {};
+
+// ── DOM ───────────────────────────────────────────────────────────────────
+const wsDot           = document.getElementById('ws-dot');
+const sessionList     = document.getElementById('session-list');
+const noSessions      = document.getElementById('no-sessions');
+const charInfo        = document.getElementById('char-info');
+const hint            = document.getElementById('hint');
+const tabBar          = document.getElementById('tab-bar');
+const tabPackets      = document.getElementById('tab-packets');
+const tabMobiles      = document.getElementById('tab-mobiles');
+const tabItems        = document.getElementById('tab-items');
+const btnSubscribe    = document.getElementById('btn-subscribe');
+const btnClear        = document.getElementById('btn-clear');
+const btnHexMode      = document.getElementById('btn-hex-mode');
+const filterBox       = document.getElementById('filter-box');
+const filterInput     = document.getElementById('filter-input');
+const btnFilterClear  = document.getElementById('btn-filter-clear');
+const pktCountEl      = document.getElementById('pkt-count');
+const pktBody         = document.getElementById('pkt-body');
+const tableWrap       = document.getElementById('table-wrap');
+const btnGetMobiles   = document.getElementById('btn-get-mobiles');
+const btnGetItems     = document.getElementById('btn-get-items');
+const serialInput     = document.getElementById('serial-input');
+const btnGetMobile    = document.getElementById('btn-get-mobile');
+const btnGetEquipment = document.getElementById('btn-get-equipment');
+const btnUseObject    = document.getElementById('btn-use-object');
+const chkRawStep      = document.getElementById('chk-raw-step');
+const compassBtns     = [...document.querySelectorAll('.cmp-btn[data-h]')];
+const mobWrap         = document.getElementById('mob-wrap');
+const mobHint         = document.getElementById('mob-hint');
+const itemWrap        = document.getElementById('item-wrap');
+const itemHint        = document.getElementById('item-hint');
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function wsUrl() {
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/control`;
+}
+
+function connect() {
+  clearTimeout(reconnectTimer);
+  if (ws) { try { ws.close(); } catch(_) {} }
+  ws = new WebSocket(wsUrl());
+
+  ws.addEventListener('open', () => {
+    setDot('connected');
+    startPoll();
+    if (activeSessionId !== null)
+      send({ type: 'attach', session_id: activeSessionId });
+  });
+
+  ws.addEventListener('message', ev => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    handleMessage(msg);
+  });
+
+  ws.addEventListener('close', () => {
+    setDot('error'); ws = null; stopPoll();
+    subscribed = false; updateSubscribeBtn();
+    setEntityBtnsEnabled(false);
+    reconnectTimer = setTimeout(connect, 2500);
+  });
+
+  ws.addEventListener('error', () => setDot('error'));
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────
+function startPoll() { stopPoll(); doPoll(); pollTimer = setInterval(doPoll, POLL_MS); }
+function stopPoll()  { if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; } }
+function doPoll()    { send({ type: 'list_sessions' }); }
+
+// ── Message dispatch ───────────────────────────────────────────────────────
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'sessions':  updateSessionList(msg.sessions ?? []); break;
+    case 'attached':  onAttached(msg);                       break;
+    case 'state':     onState(msg.state);                    break;
+    case 'packet':    onPacket(msg.event);                   break;
+    case 'mobiles':   renderMobiles(msg.mobiles ?? []);      break;
+    case 'mobile':    onSingleMobile(msg.mobile);            break;
+    case 'equipment': onEquipment(msg.serial, msg.equipment ?? []); break;
+    case 'items':     renderItems(msg.items ?? []);          break;
+    case 'used':      onUsed(msg.serial);                    break;
+    case 'stepped':   onStepped(msg.heading, msg.blocked);   break;
+    case 'error':     console.warn('[ws]', msg.message);     break;
+  }
+}
+
+// ── Session list ───────────────────────────────────────────────────────────
+function updateSessionList(list) {
+  if (!Array.isArray(list)) return;
+  const seen = new Set();
+  for (const s of list) {
+    seen.add(s.id);
+    if (!sessions[s.id]) sessions[s.id] = {};
+    Object.assign(sessions[s.id], s);
+  }
+  for (const id of Object.keys(sessions)) if (!seen.has(+id)) delete sessions[id];
+  renderSessionList();
+  if (activeSessionId !== null && !seen.has(activeSessionId)) {
+    activeSessionId = null; showHint();
+  }
+}
+
+function renderSessionList() {
+  for (const li of [...sessionList.querySelectorAll('li[data-id]')]) li.remove();
+  const ids = Object.keys(sessions).map(Number).sort((a, b) => a - b);
+  noSessions.style.display = ids.length === 0 ? '' : 'none';
+  for (const id of ids) {
+    const s  = sessions[id];
+    const li = document.createElement('li');
+    li.dataset.id = id;
+    if (id === activeSessionId) li.classList.add('active');
+    const char = s.character ?? '…';
+    let posText = '';
+    if (s.position) {
+      const [x, y, z] = s.position;
+      posText = `${x},\u2009${y},\u2009${z}\u2003w${s.world ?? '?'}`;
+    }
+    li.innerHTML =
+      `<div class="sess-id">#${esc(id)}</div>` +
+      `<div class="sess-char">${esc(char)}</div>` +
+      (posText ? `<div class="sess-pos">${esc(posText)}</div>` : '');
+    li.addEventListener('click', () => selectSession(id));
+    sessionList.appendChild(li);
+  }
+}
+
+// ── Session selection ──────────────────────────────────────────────────────
+function selectSession(id) {
+  if (id === activeSessionId) return;
+  if (subscribed) { send({ type: 'unsubscribe' }); subscribed = false; updateSubscribeBtn(); }
+  activeSessionId = id; clearTable(); expandedMobs = {};
+  for (const li of sessionList.querySelectorAll('li[data-id]'))
+    li.classList.toggle('active', +li.dataset.id === id);
+  send({ type: 'attach', session_id: id });
+  showOutput();
+}
+
+// ── Attached / State ───────────────────────────────────────────────────────
+function onAttached(msg) {
+  const id   = msg.session_id;
+  const char = msg.character ?? '—';
+  if (sessions[id]) sessions[id].character = char;
+  renderSessionList();
+  send({ type: 'get_state' });
+}
+
+function onState(state) {
+  if (!state) return;
+  const [x, y, z] = state.position ?? [0, 0, 0];
+  const world = state.world ?? '?';
+  if (activeSessionId !== null && sessions[activeSessionId]) {
+    sessions[activeSessionId].position = state.position;
+    sessions[activeSessionId].world    = state.world;
+    renderSessionList();
+  }
+  // update char info panel
+  const s = sessions[activeSessionId] ?? {};
+  renderCharInfo({
+    character: s.character ?? state.character ?? '—',
+    serial:    state.serial,
+    x, y, z, world,
+  });
+  setEntityBtnsEnabled(true);
+  btnSubscribe.disabled = false;
+}
+
+function renderCharInfo(info) {
+  charInfo.innerHTML = '';
+  function row(label, value, cls) {
+    const d = document.createElement('div');
+    d.className = 'info-row';
+    d.innerHTML = `<span class="info-label">${esc(label)}</span>` +
+                  `<span class="info-value ${cls ?? ''}">${esc(String(value ?? '—'))}</span>`;
+    charInfo.appendChild(d);
+  }
+  row('Character', info.character, 'accent2');
+  if (info.serial != null)
+    row('Serial', `0x${(info.serial >>> 0).toString(16).toUpperCase().padStart(8,'0')}`, 'accent');
+  row('Position', `${info.x}, ${info.y}, ${info.z}`, '');
+  row('World', info.world, '');
+}
+
+// ── Packet event ───────────────────────────────────────────────────────────
+function onPacket(ev) { if (!ev) return; appendRow(ev); }
+
+function appendRow(ev) {
+  while (pktBody.childElementCount >= MAX_ROWS)
+    pktBody.removeChild(pktBody.firstElementChild);
+
+  const isS2C  = ev.direction === 's2c';
+  const hexBytes = ev.hex ?? '';
+  const byteLen  = Math.round(hexBytes.length / 2);
+
+  const tr = document.createElement('tr');
+  tr.classList.add(isS2C ? 'row-s2c' : 'row-c2s');
+  tr.dataset.hex    = hexBytes;
+  tr.dataset.parsed = ev.parsed ? JSON.stringify(ev.parsed) : '';
+  tr.innerHTML =
+    `<td class="col-time">${fmtTime()}</td>` +
+    `<td class="${isS2C ? 'col-dir-s2c' : 'col-dir-c2s'}">${isS2C ? 'S\u2192C' : 'C\u2192S'}</td>` +
+    `<td class="col-id">${esc(ev.id ?? '')}</td>` +
+    `<td class="col-len">${byteLen}</td>` +
+    `<td class="col-data ${dataClass(ev)}">${dataText(ev)}</td>`;
+  pktBody.appendChild(tr);
+  pktCount++;
+  pktCountEl.textContent = `${pktCount} pkts`;
+  if (autoScroll) tableWrap.scrollTop = tableWrap.scrollHeight;
+}
+
+function dataClass(ev) {
+  if (hexMode)   return 'is-hex';
+  if (ev.parsed) return 'is-parsed';
+  return 'is-unknown';
+}
+function dataText(ev) {
+  if (hexMode)   return esc(fmtHex(ev.hex ?? ''));
+  if (ev.parsed) return esc(JSON.stringify(ev.parsed));
+  return esc(fmtHex(ev.hex ?? ''));
+}
+function fmtHex(hex) {
+  const pairs = [];
+  for (let i = 0; i < hex.length; i += 2) pairs.push(hex.slice(i, i + 2));
+  const full = pairs.join(' ');
+  return full.length > 120 ? full.slice(0, 120) + '…' : full;
+}
+
+// ── Hex mode toggle ────────────────────────────────────────────────────────
+function applyHexMode() {
+  for (const tr of pktBody.querySelectorAll('tr')) {
+    const td = tr.querySelector('.col-data');
+    if (!td) continue;
+    const hex    = tr.dataset.hex    ?? '';
+    const parsed = tr.dataset.parsed ? JSON.parse(tr.dataset.parsed) : null;
+    const ev = { hex, parsed };
+    td.className  = 'col-data ' + dataClass(ev);
+    td.textContent = dataText(ev);
+  }
+}
+
+// ── Mobiles ────────────────────────────────────────────────────────────────
+function renderMobiles(mobiles) {
+  mobWrap.innerHTML = '';
+  if (mobiles.length === 0) {
+    const d = document.createElement('div');
+    d.id = 'mob-hint'; d.textContent = 'No mobiles in visible range.';
+    mobWrap.appendChild(d); return;
+  }
+  const tbl = document.createElement('table');
+  tbl.className = 'mob-table';
+  tbl.innerHTML =
+    `<thead><tr>
+      <th>Serial</th><th>Graphic</th><th>Color</th>
+      <th>Notoriety</th><th>Pos</th><th>Dir</th><th>Eq</th><th></th>
+    </tr></thead>`;
+  const tbody = document.createElement('tbody');
+  tbl.appendChild(tbody);
+  mobWrap.appendChild(tbl);
+
+  for (const mob of mobiles) buildMobRow(tbody, mob);
+
+  // restore expansions
+  for (const [serial, _] of Object.entries(expandedMobs)) {
+    const btn = tbody.querySelector(`tr[data-serial="${serial}"] .btn-use`);
+    // expansion handled in buildMobRow via expandedMobs check
+  }
+}
+
+function buildMobRow(tbody, mob) {
+  const serialHex = fmtSerial(mob.serial);
+  const graphicHex = `0x${mob.graphic.toString(16).toUpperCase().padStart(4,'0')}`;
+  const notor = mob.notoriety ?? 0;
+  const notorName = NOTORIETY_NAMES[notor] ?? `0x${notor.toString(16)}`;
+
+  const tr = document.createElement('tr');
+  tr.className = 'mob-row';
+  tr.dataset.serial = mob.serial;
+  if (expandedMobs[mob.serial]) tr.classList.add('expanded');
+
+  tr.innerHTML =
+    `<td class="mob-serial">${esc(serialHex)}</td>` +
+    `<td class="mob-graphic">${esc(graphicHex)}</td>` +
+    `<td class="mob-graphic">0x${mob.color.toString(16).toUpperCase().padStart(4,'0')}</td>` +
+    `<td class="mob-notor notor-${notor}" title="${esc(notorName)}">${esc(notorName)}</td>` +
+    `<td class="mob-pos">${mob.x},\u2009${mob.y},\u2009${mob.z}</td>` +
+    `<td class="mob-pos">${mob.direction}</td>` +
+    `<td class="mob-pos">${mob.equipment.length}</td>` +
+    `<td><button class="btn-use" title="DoubleClick serial ${serialHex}">Use</button></td>`;
+
+  // click row → expand/collapse equipment
+  tr.addEventListener('click', e => {
+    if (e.target.classList.contains('btn-use')) return;
+    toggleMobExpand(tbody, tr, mob);
+  });
+
+  // use button
+  tr.querySelector('.btn-use').addEventListener('click', e => {
+    e.stopPropagation();
+    send({ type: 'use_object', serial: mob.serial });
+    serialInput.value = serialHex;
+  });
+
+  tbody.appendChild(tr);
+  if (expandedMobs[mob.serial]) insertEqRow(tbody, tr, mob);
+}
+
+function toggleMobExpand(tbody, tr, mob) {
+  const serial = mob.serial;
+  if (expandedMobs[serial]) {
+    delete expandedMobs[serial];
+    tr.classList.remove('expanded');
+    // remove eq row
+    const next = tr.nextSibling;
+    if (next && next.classList && next.classList.contains('eq-row')) next.remove();
+  } else {
+    expandedMobs[serial] = true;
+    tr.classList.add('expanded');
+    insertEqRow(tbody, tr, mob);
+  }
+}
+
+function insertEqRow(tbody, tr, mob) {
+  const eqTr = document.createElement('tr');
+  eqTr.className = 'eq-row';
+  eqTr.dataset.eqFor = mob.serial;
+  const td = document.createElement('td');
+  td.colSpan = 8;
+
+  const inner = document.createElement('div');
+  inner.className = 'eq-inner';
+
+  if (mob.equipment.length === 0) {
+    inner.innerHTML = `<span class="eq-empty">No equipment</span>`;
+  } else {
+    const sub = document.createElement('table');
+    sub.className = 'eq-subtable';
+    sub.innerHTML =
+      `<thead><tr><th>Serial</th><th>Graphic</th><th>Color</th><th>Layer</th><th>Parent</th></tr></thead>`;
+    const sb = document.createElement('tbody');
+    for (const eq of mob.equipment) {
+      const r = document.createElement('tr');
+      r.innerHTML =
+        `<td class="eq-serial">${esc(fmtSerial(eq.serial))}</td>` +
+        `<td class="eq-graphic">0x${eq.graphic.toString(16).toUpperCase().padStart(4,'0')}</td>` +
+        `<td class="eq-graphic">0x${eq.color.toString(16).toUpperCase().padStart(4,'0')}</td>` +
+        `<td class="eq-layer">${eq.layer}</td>` +
+        `<td class="eq-serial">${esc(fmtSerial(eq.parent))}</td>`;
+      // click eq row → fill serial input
+      r.style.cursor = 'pointer';
+      r.addEventListener('click', () => { serialInput.value = fmtSerial(eq.serial); });
+      sb.appendChild(r);
+    }
+    sub.appendChild(sb);
+    inner.appendChild(sub);
+  }
+
+  td.appendChild(inner);
+  eqTr.appendChild(td);
+  tr.insertAdjacentElement('afterend', eqTr);
+}
+
+function onSingleMobile(mob) {
+  if (!mob) {
+    mobWrap.innerHTML = '';
+    const d = document.createElement('div');
+    d.id = 'mob-hint'; d.textContent = 'Mobile not found.';
+    mobWrap.appendChild(d);
+    return;
+  }
+  // Rebuild the table with only this mobile.
+  expandedMobs = {};
+  renderMobiles([mob]);
+}
+
+function onEquipment(serial, equipment) {
+  // Rebuild table with a synthetic mobile entry so equipment is visible inline.
+  // Find existing mob data in the current table first.
+  const existingRow = mobWrap.querySelector(`tr[data-serial="${serial}"]`);
+  if (existingRow) {
+    // Table already has this mobile — just expand it and refresh equipment.
+    expandedMobs = {};
+    expandedMobs[serial] = true;
+    // Re-render to apply fresh expansion state.
+    const tbody = existingRow.closest('tbody');
+    // Remove all eq-rows, collapse all, then re-expand this one.
+    for (const tr of [...tbody.querySelectorAll('.mob-row')]) tr.classList.remove('expanded');
+    for (const tr of [...tbody.querySelectorAll('.eq-row')]) tr.remove();
+    const targetRow = tbody.querySelector(`tr[data-serial="${serial}"]`);
+    if (targetRow) {
+      targetRow.classList.add('expanded');
+      // Build a mock mob object from the row's equipment reply.
+      const mockMob = { serial, equipment };
+      insertEqRow(tbody, targetRow, mockMob);
+    }
+  } else {
+    // Mobile not in current table — show a minimal single-row table.
+    expandedMobs = {};
+    expandedMobs[serial] = true;
+    mobWrap.innerHTML = '';
+    const tbl = document.createElement('table');
+    tbl.className = 'mob-table';
+    tbl.innerHTML =
+      `<thead><tr>
+        <th>Serial</th><th>Graphic</th><th>Color</th>
+        <th>Notoriety</th><th>Pos</th><th>Dir</th><th>Eq</th><th></th>
+      </tr></thead>`;
+    const tbody = document.createElement('tbody');
+    tbl.appendChild(tbody);
+    mobWrap.appendChild(tbl);
+    // Minimal stub so buildMobRow has something to work with.
+    const stub = {
+      serial, graphic: 0, color: 0, x: 0, y: 0, z: 0,
+      direction: 0, world: 0, flags: 0, notoriety: 0,
+      equipment,
+    };
+    buildMobRow(tbody, stub);
+  }
+  switchTab('mobiles');
+}
+
+function onUsed(serial) {
+  console.info('[ws] used object', fmtSerial(serial));
+}
+
+const HEADING_NAMES = ['N','NE','E','SE','S','SW','W','NW'];
+
+function onStepped(heading, blocked) {
+  const name = HEADING_NAMES[heading] ?? heading;
+  if (blocked) {
+    // flash the corresponding compass button red briefly
+    const btn = document.querySelector(`.cmp-btn[data-h="${heading}"]`);
+    if (btn) {
+      btn.style.borderColor = 'var(--red)';
+      btn.style.color       = 'var(--red)';
+      setTimeout(() => { btn.style.borderColor = ''; btn.style.color = ''; }, 400);
+    }
+    console.info(`[ws] step ${name}: blocked`);
+  } else {
+    console.info(`[ws] step ${name}: queued`);
+  }
+}
+
+// ── Items ──────────────────────────────────────────────────────────────────
+function renderItems(items) {
+  itemWrap.innerHTML = '';
+  if (items.length === 0) {
+    const d = document.createElement('div');
+    d.id = 'item-hint'; d.textContent = 'No items in visible range.';
+    itemWrap.appendChild(d); return;
+  }
+  const tbl = document.createElement('table');
+  tbl.className = 'item-table';
+  tbl.innerHTML =
+    `<thead><tr>
+      <th>Serial</th><th>Graphic</th><th>Color</th>
+      <th>Count</th><th>Pos</th><th>World</th><th>Flags</th>
+    </tr></thead>`;
+  const tbody = document.createElement('tbody');
+  for (const it of items) {
+    const tr = document.createElement('tr');
+    tr.dataset.serial = it.serial;
+    tr.innerHTML =
+      `<td class="item-serial">${esc(fmtSerial(it.serial))}</td>` +
+      `<td class="item-graphic">0x${it.graphic.toString(16).toUpperCase().padStart(4,'0')}</td>` +
+      `<td class="item-graphic">0x${it.color.toString(16).toUpperCase().padStart(4,'0')}</td>` +
+      `<td>${it.count}</td>` +
+      `<td class="item-pos">${it.x},\u2009${it.y},\u2009${it.z}</td>` +
+      `<td class="item-pos">${it.world}</td>` +
+      `<td class="item-pos">0x${it.flags.toString(16).toUpperCase().padStart(2,'0')}</td>`;
+    tr.addEventListener('click', () => { serialInput.value = fmtSerial(it.serial); });
+    tbody.appendChild(tr);
+  }
+  tbl.appendChild(tbody);
+  itemWrap.appendChild(tbl);
+  // switch to items tab
+  switchTab('items');
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  currentTab = name;
+  for (const btn of document.querySelectorAll('.tab-btn'))
+    btn.classList.toggle('active', btn.dataset.tab === name);
+  for (const pane of document.querySelectorAll('.tab-pane'))
+    pane.classList.toggle('active', pane.id === `tab-${name}`);
+  // sync display (tab-pane shown/hidden via class, but also need display)
+  for (const pane of document.querySelectorAll('.tab-pane'))
+    pane.style.display = pane.classList.contains('active') ? 'flex' : 'none';
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ── Entity button controls ─────────────────────────────────────────────────
+function setEntityBtnsEnabled(on) {
+  [btnGetMobiles, btnGetItems, btnGetMobile, btnGetEquipment, btnUseObject]
+    .forEach(b => b.disabled = !on);
+  compassBtns.forEach(b => b.disabled = !on);
+}
+
+function parseSerial(raw) {
+  const s = raw.trim().replace(/^0x/i, '');
+  const n = parseInt(s, /^[0-9a-fA-F]+$/.test(s) ? 16 : 10);
+  return isNaN(n) ? null : (n >>> 0);
+}
+
+function fmtSerial(n) {
+  return `0x${(n >>> 0).toString(16).toUpperCase().padStart(8,'0')}`;
+}
+
+btnGetMobiles.addEventListener('click', () => {
+  expandedMobs = {};
+  mobWrap.innerHTML = '<div id="mob-hint">Loading\u2026</div>';
+  send({ type: 'get_mobiles' });
+  switchTab('mobiles');
+});
+
+btnGetItems.addEventListener('click', () => {
+  itemWrap.innerHTML = '<div id="item-hint">Loading\u2026</div>';
+  send({ type: 'get_items' });
+  switchTab('items');
+});
+
+btnGetMobile.addEventListener('click', () => {
+  const serial = parseSerial(serialInput.value);
+  if (serial === null) { serialInput.focus(); return; }
+  expandedMobs = {};
+  mobWrap.innerHTML = '<div id="mob-hint">Loading\u2026</div>';
+  send({ type: 'get_mobile', serial });
+  switchTab('mobiles');
+});
+
+btnGetEquipment.addEventListener('click', () => {
+  const serial = parseSerial(serialInput.value);
+  if (serial === null) { serialInput.focus(); return; }
+  mobWrap.innerHTML = '<div id="mob-hint">Loading\u2026</div>';
+  send({ type: 'get_equipment', serial });
+  switchTab('mobiles');
+});
+
+btnUseObject.addEventListener('click', () => {
+  const serial = parseSerial(serialInput.value);
+  if (serial === null) { serialInput.focus(); return; }
+  send({ type: 'use_object', serial });
+});
+
+// ── Compass ────────────────────────────────────────────────────────────────
+compassBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const heading = parseInt(btn.dataset.h, 10);
+    const raw = chkRawStep.checked;
+    send({ type: 'step', heading, raw });
+  });
+});
+
+// ── Filter ─────────────────────────────────────────────────────────────────
+function parseFilter(raw) {
+  const text = raw.trim();
+  if (!text) return { ids: null, error: null };
+  const ids = [];
+  for (const tok of text.split(/[\s,]+/).filter(Boolean)) {
+    let num;
+    if (/^0x[0-9a-fA-F]+$/i.test(tok)) num = parseInt(tok, 16);
+    else if (/^\d+$/.test(tok))         num = parseInt(tok, 10);
+    else return { ids: null, error: `invalid token: "${tok}"` };
+    if (num < 0 || num > 255) return { ids: null, error: `out of range: "${tok}"` };
+    ids.push(num);
+  }
+  return { ids: ids.length ? ids : null, error: null };
+}
+
+function applyFilter() {
+  const { ids, error } = parseFilter(filterInput.value);
+  filterBox.classList.toggle('filter-error',  !!error);
+  filterBox.classList.toggle('filter-active', !error && ids !== null);
+  filterInput.title = error ? `\u26a0 ${error}` : '';
+  if (!error) filterIds = ids;
+  if (subscribed && !error) send({ type: 'subscribe', filter: filterIds });
+}
+
+// ── Subscribe ──────────────────────────────────────────────────────────────
+function updateSubscribeBtn() {
+  btnSubscribe.textContent = subscribed ? 'Unsubscribe' : 'Subscribe';
+  btnSubscribe.classList.toggle('on', subscribed);
+}
+
+btnSubscribe.addEventListener('click', () => {
+  if (!activeSessionId) return;
+  if (subscribed) {
+    send({ type: 'unsubscribe' }); subscribed = false;
+  } else {
+    send({ type: 'subscribe', filter: filterIds }); subscribed = true;
+    switchTab('packets');
+  }
+  updateSubscribeBtn();
+});
+
+btnClear.addEventListener('click', clearTable);
+function clearTable() {
+  pktBody.innerHTML = ''; pktCount = 0;
+  pktCountEl.textContent = '0 pkts'; autoScroll = true;
+}
+
+btnHexMode.addEventListener('click', () => {
+  hexMode = !hexMode;
+  btnHexMode.textContent = hexMode ? 'Hex' : 'Parsed';
+  btnHexMode.classList.toggle('on', hexMode);
+  applyHexMode();
+});
+
+let filterTimer = null;
+filterInput.addEventListener('input', () => {
+  clearTimeout(filterTimer); filterTimer = setTimeout(applyFilter, 250);
+});
+btnFilterClear.addEventListener('click', () => {
+  filterInput.value = ''; applyFilter(); filterInput.focus();
+});
+
+tableWrap.addEventListener('scroll', () => {
+  const bottom = tableWrap.scrollHeight - tableWrap.scrollTop - tableWrap.clientHeight;
+  autoScroll = bottom < 80;
+});
+
+// ── View helpers ───────────────────────────────────────────────────────────
+function showHint() {
+  hint.style.display = '';
+  tabBar.style.display = 'none';
+  for (const p of document.querySelectorAll('.tab-pane')) p.style.display = 'none';
+  charInfo.innerHTML = '';
+  setEntityBtnsEnabled(false);
+  btnSubscribe.disabled = true;
+}
+
+function showOutput() {
+  hint.style.display = 'none';
+  tabBar.style.display = 'flex';
+  switchTab(currentTab);
+}
+
+function setDot(cls) {
+  wsDot.className = cls;
+  wsDot.title = { connected: 'Connected', error: 'Disconnected' }[cls] ?? 'Connecting\u2026';
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function fmtTime() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0')   + ':' +
+         String(d.getMinutes()).padStart(2,'0') + ':' +
+         String(d.getSeconds()).padStart(2,'0') + '.' +
+         String(d.getMilliseconds()).padStart(3,'0');
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UO Replay Controller</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+  h1 { color: #8be9fd; margin-bottom: 20px; font-size: 24px; }
+  .status-bar { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .status-bar .label { color: #888; font-size: 12px; text-transform: uppercase; }
+  .status-bar .value { color: #e0e0e0; font-size: 16px; font-weight: 600; }
+  .time-display { font-size: 32px; color: #8be9fd; font-family: 'Consolas', monospace; text-align: center; margin: 20px 0; }
+  .progress-container { position: relative; height: 24px; background: #16213e; border: 1px solid #0f3460; border-radius: 12px; margin: 20px 0; cursor: pointer; overflow: hidden; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, #0f3460, #533483); border-radius: 12px; transition: width 0.15s linear; }
+  .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 20px 0; }
+  .controls button { background: #16213e; color: #e0e0e0; border: 1px solid #0f3460; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 14px; transition: all 0.15s; min-width: 50px; }
+  .controls button:hover { background: #0f3460; border-color: #533483; }
+  .controls button:active { background: #533483; }
+  .controls button.primary { background: #533483; border-color: #8be9fd; }
+  .controls button.primary:hover { background: #8be9fd; color: #1a1a2e; }
+  .section { margin: 20px 0; }
+  .section-title { color: #888; font-size: 12px; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+  .speed-display { text-align: center; color: #888; font-size: 14px; }
+  .connection-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .connection-dot.connected { background: #50fa7b; }
+  .connection-dot.disconnected { background: #ff5555; }
+  .connection-dot.waiting { background: #f1fa8c; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>UO Replay Controller</h1>
+
+  <div class="status-bar" id="status-bar">
+    <span class="connection-dot waiting" id="conn-dot"></span>
+    <span class="label">Status: </span>
+    <span class="value" id="status-text">Connecting...</span>
+  </div>
+
+  <div class="time-display" id="time-display">--:-- / --:--</div>
+
+  <div class="progress-container" id="progress-container">
+    <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Transport</div>
+    <div class="controls">
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:-30000})" title="Rewind 30s">-30s</button>
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:-10000})" title="Rewind 10s">-10s</button>
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:-1000})" title="Rewind 1s">-1s</button>
+      <button onclick="sendCmd({cmd:'toggle_pause'})" id="btn-pause" class="primary" title="Play/Pause">Play</button>
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:1000})" title="Forward 1s">+1s</button>
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:10000})" title="Forward 10s">+10s</button>
+      <button onclick="sendCmd({cmd:'seek_relative', delta_ms:30000})" title="Forward 30s">+30s</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Packet Stepping</div>
+    <div class="controls">
+      <button onclick="sendCmd({cmd:'step', count:-1})" title="Previous packet">Prev</button>
+      <button onclick="sendCmd({cmd:'step_client', count:-1})" title="Previous client packet">Cli Prev</button>
+      <button onclick="sendCmd({cmd:'step_server', count:-1})" title="Previous server packet">Srv Prev</button>
+      <button onclick="sendCmd({cmd:'step_server', count:1})" title="Next server packet">Srv Next</button>
+      <button onclick="sendCmd({cmd:'step_client', count:1})" title="Next client packet">Cli Next</button>
+      <button onclick="sendCmd({cmd:'step', count:1})" title="Next packet">Next</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Fast Forward</div>
+    <div class="controls">
+      <button onclick="sendCmd({cmd:'fast_forward', delta_ms:5000})">FF +5s</button>
+      <button onclick="sendCmd({cmd:'fast_forward', delta_ms:30000})">FF +30s</button>
+      <button onclick="sendCmd({cmd:'fast_forward', delta_ms:60000})">FF +60s</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Session</div>
+    <div class="controls">
+      <button onclick="sendCmd({cmd:'restart'})">Restart</button>
+      <button onclick="sendCmd({cmd:'stop'})">Stop</button>
+    </div>
+  </div>
+
+  <div class="speed-display" id="speed-display">Speed: 1.0x</div>
+</div>
+
+<script>
+'use strict';
+let ws = null;
+let lastStatus = null;
+
+function fmtMs(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0');
+}
+
+function updateUI(st) {
+  lastStatus = st;
+  // current_us / total_us are in microseconds; convert to ms for display
+  const current_ms = Math.round(st.current_us / 1000);
+  const total_ms = Math.round(st.total_us / 1000);
+  document.getElementById('time-display').textContent =
+    fmtMs(current_ms) + ' / ' + fmtMs(total_ms);
+
+  const pct = total_ms > 0 ? (current_ms / total_ms * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+
+  const btn = document.getElementById('btn-pause');
+  btn.textContent = st.paused ? 'Play' : 'Pause';
+
+  document.getElementById('speed-display').textContent =
+    'Speed: ' + st.speed.toFixed(1) + 'x' +
+    (st.finished ? '  [FINISHED]' : '') +
+    '  |  Entry ' + st.idx + ' / ' + st.total_entries;
+
+  const dot = document.getElementById('conn-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'connection-dot connected';
+  txt.textContent = st.paused
+    ? (st.finished ? 'Finished' : 'Paused at ' + fmtMs(current_ms))
+    : 'Playing at ' + fmtMs(current_ms);
+}
+
+function sendCmd(cmd) {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify(cmd));
+  }
+}
+
+// Click on progress bar to seek
+document.getElementById('progress-container').addEventListener('click', function(e) {
+  if (!lastStatus || lastStatus.total_us === 0) return;
+  const rect = this.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  const ms = Math.round(pct * lastStatus.total_us / 1000);
+  sendCmd({ cmd: 'seek', ms: ms });
+});
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+
+  ws.onopen = function() {
+    const dot = document.getElementById('conn-dot');
+    const txt = document.getElementById('status-text');
+    dot.className = 'connection-dot connected';
+    txt.textContent = 'Connected — waiting for replay session...';
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'status' && msg.data) {
+        updateUI(msg.data);
+      } else if (msg.type === 'client_connected') {
+        document.getElementById('status-text').textContent = 'UO Client connected';
+      } else if (msg.type === 'client_disconnected') {
+        document.getElementById('status-text').textContent = 'UO Client disconnected';
+        document.getElementById('conn-dot').className = 'connection-dot disconnected';
+      } else if (msg.type === 'log_loaded') {
+        document.getElementById('status-text').textContent =
+          'Log loaded: ' + (msg.log_name || '?') + (msg.char_name ? ' (' + msg.char_name + ')' : '');
+      }
+    } catch (err) {
+      console.error('ws parse error:', err);
+    }
+  };
+
+  ws.onclose = function() {
+    document.getElementById('conn-dot').className = 'connection-dot disconnected';
+    document.getElementById('status-text').textContent = 'Disconnected — reconnecting...';
+    setTimeout(connect, 2000);
+  };
+
+  ws.onerror = function() {
+    ws.close();
+  };
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      sendCmd({ cmd: 'toggle_pause' });
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      sendCmd(e.shiftKey
+        ? { cmd: 'seek_relative', delta_ms: -10000 }
+        : { cmd: 'seek_relative', delta_ms: -1000 });
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      sendCmd(e.shiftKey
+        ? { cmd: 'seek_relative', delta_ms: 10000 }
+        : { cmd: 'seek_relative', delta_ms: 1000 });
+      break;
+    case 'r':
+      sendCmd({ cmd: 'restart' });
+      break;
+    case '.':
+      sendCmd({ cmd: 'step', count: 1 });
+      break;
+    case ',':
+      sendCmd({ cmd: 'step', count: -1 });
+      break;
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

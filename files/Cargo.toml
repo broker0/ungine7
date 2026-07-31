@@ -1,0 +1,11 @@
+[package]
+name = "files"
+
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[dependencies]
+u-io = { path = "../u-io" }
+macros = { path = "../macros" }
+log = "0.4"

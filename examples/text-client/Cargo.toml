@@ -1,0 +1,24 @@
+[package]
+name = "text-client"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "text-client"
+path = "src/main.rs"
+
+[dependencies]
+u-core     = { path = "../../u-core" }
+packets    = { path = "../../packets" }
+network    = { path = "../../network", features = ["proxy"] }
+protocol   = { path = "../../protocol" }
+framework  = { path = "../../framework" }
+files      = { path = "../../files" }
+common     = { path = "../common" }
+clap       = { version = "4", features = ["derive"] }
+tokio      = { version = "1", features = ["full"] }
+ratatui    = "0.29"
+crossterm  = { version = "0.28", features = ["event-stream"] }
+log        = "0.4"
+futures    = "0.3"

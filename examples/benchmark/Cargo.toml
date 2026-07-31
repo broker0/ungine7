@@ -1,0 +1,30 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "bench-server"
+path = "server.rs"
+
+[[bin]]
+name = "bench-client"
+path = "client.rs"
+
+[[bin]]
+name = "bench-movement"
+path = "movement.rs"
+
+[dependencies]
+u-core    = { path = "../../u-core" }
+protocol  = { path = "../../protocol" }
+packets   = { path = "../../packets" }
+network   = { path = "../../network" }
+common    = { path = "../common" }
+tokio     = { version = "1.51.1", features = ["full"] }
+log       = "0.4.29"
+anyhow    = "1.0.102"
+clap      = { version = "4", features = ["derive"] }
+rand      = "0.9"
+bytes     = "1"

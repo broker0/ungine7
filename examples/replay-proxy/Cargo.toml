@@ -1,0 +1,47 @@
+[package]
+name = "replay-proxy"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+default-server = ["common/default-server"]
+
+[lib]
+name = "replay_proxy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "replay-proxy"
+path = "src/bin/replay_proxy.rs"
+
+[[bin]]
+name = "log-preprocessor"
+path = "src/bin/log_preprocessor.rs"
+
+[[bin]]
+name = "simple-replay"
+path = "src/bin/simple_replay.rs"
+
+[[bin]]
+name = "replay-server"
+path = "src/bin/replay_server.rs"
+
+[dependencies]
+u-core            = { path = "../../u-core" }
+network         = { path = "../../network" }
+protocol        = { path = "../../protocol", features = ["proxy"] }
+packets         = { path = "../../packets" }
+files           = { path = "../../files" }
+common = { path = "../common" }
+framework          = { path = "../../framework" }
+
+tokio       = { version = "1.51.1", features = ["full"] }
+async-trait = "0.1.89"
+log         = "0.4"
+clap        = { version = "4", features = ["derive"] }
+bytes       = "1"
+rand = "0.8"
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+axum        = { version = "0.8", features = ["ws"] }

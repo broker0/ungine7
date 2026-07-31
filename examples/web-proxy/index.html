@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UO Web Proxy</title>
+<style>
+  :root {
+    --bg:         #0d1117;
+    --surface:    #161b22;
+    --surface2:   #1c2128;
+    --surface3:   #21262d;
+    --border:     #30363d;
+    --border2:    #21262d;
+    --muted:      #8b949e;
+    --muted2:     #484f58;
+    --text:       #c9d1d9;
+    --text-hi:    #e6edf3;
+    --accent:     #58a6ff;
+    --accent2:    #d2a8ff;
+    --green:      #56d364;
+    --orange:     #f0883e;
+    --blue:       #79c0ff;
+    --red:        #f85149;
+    --purple:     #bc8cff;
+
+    --row-c2s:    #1f1500;
+    --row-s2c:    #001525;
+    --row-c2s-hv: #2e1e00;
+    --row-s2c-hv: #002035;
+
+    /* Raw stage row tints */
+    --row-raw-read:      #00111e;
+    --row-decrypted:     #00140a;
+    --row-pre-encrypt:   #140e00;
+    --row-raw-write:     #130010;
+    --row-raw-read-hv:   #001a2e;
+    --row-decrypted-hv:  #001f10;
+    --row-pre-encrypt-hv:#1e1500;
+    --row-raw-write-hv:  #1e0018;
+
+    --clr-raw-read:    #4d9ecf;
+    --clr-decrypted:   #3fb060;
+    --clr-pre-encrypt: #c87832;
+    --clr-raw-write:   #9a6fd8;
+
+    /* Connection event rows */
+    --row-conn:        #0d1a10;
+    --row-conn-hv:     #112218;
+    --clr-conn-client: #56d364;
+    --clr-conn-server: #79c0ff;
+    --clr-conn-error:  #f85149;
+
+    /* Toolbar: control group */
+    --ctl-group-bg:       #1a1200;
+    --ctl-group-border:   #f0883e;
+    --ctl-violet:         #cf8ef0;
+    --ctl-warm:           #f0a050;
+    --ctl-cool:           #50b8f0;
+
+    /* Toolbar: toggle tints */
+    --tint-purple:        #9a6fd8;
+    --tint-purple-bg:     #1a0018;
+    --tint-purple-dim:    #5a4080;
+    --tint-purple-border: #3d2a5a;
+    --toggle-purple-bg:   #130010;
+    --toggle-blue-bg:     #0d1a30;
+
+    /* Toolbar: sub-toggle active backgrounds */
+    --subtog-blue-bg:     #001520;
+    --subtog-green-bg:    #001a00;
+    --subtog-orange-bg:   #1a1200;
+    --subtog-violet-bg:   #1a0010;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  #sidebar {
+    width: 200px; min-width: 150px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; flex-shrink: 0;
+  }
+  #sidebar h2 {
+    padding: 10px 12px; font-size: 12px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    border-bottom: 1px solid var(--border2);
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px;
+  }
+  #sidebar h2 .h2-title { margin-right: auto; }
+  #sidebar h2 nav a {
+    color: var(--muted); text-decoration: none; font-size: 11px;
+    font-weight: 600; letter-spacing: 0; text-transform: none;
+    border-bottom: 1px dashed var(--muted2);
+    padding-bottom: 1px;
+    transition: color .15s, border-color .15s;
+  }
+  #sidebar h2 nav a:hover { color: var(--text-hi); border-color: var(--text-hi); }
+  /* Filler matches #sidebar-actions height in manager.html */
+  #sidebar-filler {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #session-list { list-style: none; overflow-y: auto; flex: 1; }
+  #session-list li {
+    padding: 10px 16px; cursor: pointer;
+    border-bottom: 1px solid var(--border2);
+    transition: background .15s; font-size: 12px;
+  }
+  #session-list li:hover  { background: var(--surface2); }
+  #session-list li.active { background: #1f3a5f; border-left: 3px solid var(--accent); }
+  .sess-addr { font-weight: 600; color: var(--text-hi); }
+  .sess-phase {
+    display: inline-block; margin-left: 6px; font-size: 10px;
+    background: var(--surface3); border-radius: 3px; padding: 1px 5px; color: var(--muted);
+  }
+  .sess-phase.login { background: #1a3a1a; color: var(--green); }
+  .sess-phase.game  { background: #1a2a4a; color: var(--accent); }
+  .sess-account { color: var(--accent2); margin-top: 2px; font-size: 11px; }
+  .sess-account .sess-acct-label { color: var(--muted); font-size: 10px; }
+  .sess-meta { color: var(--muted); margin-top: 3px; }
+  #no-sessions { padding: 20px 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+  /* ── Main ────────────────────────────────────────── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Toolbar ─────────────────────────────────────── */
+  #toolbar {
+    display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    padding: 6px 12px;
+  }
+  #toolbar h1 {
+    font-size: 14px; font-weight: 600; color: var(--text-hi);
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  #toolbar-content {
+    flex: 1 1 0; min-width: min-content;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  #raw-panel {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  #pkts-panel {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  #action-group {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    margin-left: auto;
+  }
+  #history-wrap { display: flex; align-items: center; }
+  #btn-history-mode {
+    border-radius: 6px 0 0 6px; border-right: none; min-width: 44px; flex-shrink: 0;
+  }
+  #btn-history-mode.secs-mode { color: var(--orange); border-color: var(--orange); }
+  #btn-history-mode.unlimited-mode { color: var(--red); border-color: var(--red); background: #1a0000; }
+  #history-input {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 0 6px 6px 0; color: var(--text);
+    padding: 5px 4px; font-family: inherit; font-size: 12px;
+    width: 56px; outline: none; text-align: center;
+    -moz-appearance: textfield;
+  }
+  #history-input::-webkit-outer-spin-button,
+  #history-input::-webkit-inner-spin-button { display: none; }
+  #history-input:focus { border-color: var(--accent); }
+  #history-input.input-error { border-color: var(--red); color: var(--red); }
+
+  #raw-panel {
+    display: flex; align-items: center; gap: 6px;
+  }
+  #pkts-panel {
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* filter box */
+  #filter-box {
+    display: flex; align-items: center;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; transition: border-color .2s;
+    width: 200px; flex-shrink: 0;
+  }
+  #filter-box.hidden { display: none; }
+  #filter-box:focus-within { border-color: var(--accent); }
+  #filter-box.filter-error  { border-color: var(--red); }
+  #filter-box.filter-active { border-color: var(--accent2); }
+  #filter-input {
+    background: transparent; border: none; color: var(--text);
+    padding: 5px 6px 5px 10px; font-family: inherit; font-size: 12px;
+    flex: 1; min-width: 0; outline: none;
+  }
+  #filter-input::placeholder { color: var(--muted2); }
+  #btn-filter-clear {
+    background: none; border: none;
+    color: var(--muted2); cursor: pointer; font-size: 15px;
+    padding: 0 8px; flex-shrink: 0;
+    transition: color .15s;
+  }
+  #btn-filter-clear:hover { color: var(--text-hi); }
+  #btn-filter-clear.active { color: var(--muted); }
+
+  #filter-group {
+    display: flex; align-items: center; gap: 2px;
+    background: var(--ctl-group-bg); border: 1px solid var(--ctl-group-border);
+    border-radius: 6px; padding: 0 4px;
+    margin: 0 10px; height: 28px;
+  }
+
+  #btn-dim {
+    background: none; border: none;
+    color: var(--muted2); cursor: pointer;
+    font-size: 11px; font-family: inherit; font-weight: 600;
+    padding: 0; transition: color .15s;
+    white-space: nowrap; user-select: none;
+    width: 32px; text-align: center;
+    line-height: 28px;
+  }
+
+  #filter-dir {
+    background: none; border: none;
+    color: var(--muted2); cursor: pointer;
+    font-size: 11px; font-family: inherit; font-weight: 600;
+    padding: 0; transition: color .15s;
+    white-space: nowrap; user-select: none;
+    width: 32px; text-align: center;
+    line-height: 28px;
+  }
+  #btn-dim:hover { color: var(--text); }
+  #btn-dim.mode-hide { color: var(--ctl-violet); }
+  #btn-dim.mode-off  { color: var(--green); }
+
+  #filter-dir:hover { color: var(--text); }
+  #filter-dir.dir-c2s { color: var(--ctl-warm); }
+  #filter-dir.dir-s2c { color: var(--ctl-cool); }
+
+  /* buttons */
+  .btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 5px 12px;
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    transition: background .15s; white-space: nowrap;
+  }
+  .btn:hover { background: var(--border); color: var(--text); }
+  #btn-pause.paused { color: var(--red); border-color: var(--red); }
+  #btn-log-mode {
+    padding: 3px 7px; font-size: 11px;
+    color: var(--tint-purple); border-color: var(--tint-purple); background: var(--tint-purple-bg);
+  }
+  #btn-log-mode.hex-mode { color: var(--tint-purple-dim); border-color: var(--tint-purple-border); background: var(--surface3); }
+
+  /* Show Raw */
+  #btn-show-raw { color: var(--muted2); }
+  #btn-show-raw.toggle-on { color: var(--purple); border-color: var(--purple); background: var(--toggle-purple-bg); }
+
+  /* Show Pkts */
+  #btn-show-pkts { color: var(--muted2); }
+  #btn-show-pkts.toggle-on { color: var(--accent); border-color: var(--accent); background: var(--toggle-blue-bg); }
+
+  /* Stage buttons */
+  #stage-filter { display: flex; align-items: center; gap: 3px; visibility: hidden; }
+  #stage-filter.visible { visibility: visible; }
+  .stage-btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 7px; font-family: inherit;
+    font-size: 11px; cursor: pointer; white-space: nowrap;
+    opacity: 0.45; transition: opacity .15s, background .15s;
+  }
+  .stage-btn:hover { opacity: 0.7; }
+  .stage-btn.active { opacity: 1; }
+  .stage-btn[data-stage="raw_read"]    { color: var(--clr-raw-read);    border-color: var(--clr-raw-read); }
+  .stage-btn[data-stage="decrypted"]   { color: var(--clr-decrypted);   border-color: var(--clr-decrypted); }
+  .stage-btn[data-stage="pre_encrypt"] { color: var(--clr-pre-encrypt); border-color: var(--clr-pre-encrypt); }
+  .stage-btn[data-stage="raw_write"]   { color: var(--clr-raw-write);   border-color: var(--clr-raw-write); }
+  .stage-btn.active[data-stage="raw_read"]    { background: var(--subtog-blue-bg); }
+  .stage-btn.active[data-stage="decrypted"]   { background: var(--subtog-green-bg); }
+  .stage-btn.active[data-stage="pre_encrypt"] { background: var(--subtog-orange-bg); }
+  .stage-btn.active[data-stage="raw_write"]   { background: var(--subtog-violet-bg); }
+
+  #ws-status {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted2); flex-shrink: 0; transition: background .3s;
+  }
+  #ws-status.connected { background: var(--green); }
+  #ws-status.error     { background: var(--red); }
+
+  /* ── Table ───────────────────────────────────────── */
+  #table-wrap { flex: 1; overflow-y: auto; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th {
+    position: sticky; top: 0; background: var(--surface);
+    color: var(--muted); font-weight: 600; text-align: left;
+    padding: 7px 12px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; user-select: none;
+  }
+  tbody tr { border-bottom: 1px solid var(--surface); transition: background .1s; }
+
+  /* Packet rows */
+  tbody tr.row-c2s       { background: var(--row-c2s); }
+  tbody tr.row-s2c       { background: var(--row-s2c); }
+  tbody tr.row-c2s:hover { background: var(--row-c2s-hv); }
+  tbody tr.row-s2c:hover { background: var(--row-s2c-hv); }
+  tbody tr.dimmed        { opacity: 0.18; }
+
+  /* Raw rows */
+  tbody tr.row-raw-read     { background: var(--row-raw-read); }
+  tbody tr.row-decrypted    { background: var(--row-decrypted); }
+  tbody tr.row-pre-encrypt  { background: var(--row-pre-encrypt); }
+  tbody tr.row-raw-write    { background: var(--row-raw-write); }
+  tbody tr.row-raw-read:hover     { background: var(--row-raw-read-hv); }
+  tbody tr.row-decrypted:hover    { background: var(--row-decrypted-hv); }
+  tbody tr.row-pre-encrypt:hover  { background: var(--row-pre-encrypt-hv); }
+  tbody tr.row-raw-write:hover    { background: var(--row-raw-write-hv); }
+
+  /* Connection event rows */
+  tbody tr.row-conn       { background: var(--row-conn); }
+  tbody tr.row-conn:hover { background: var(--row-conn-hv); }
+  .id-conn-client { color: var(--clr-conn-client); font-weight: 600; }
+  .id-conn-server { color: var(--clr-conn-server); font-weight: 600; }
+  .conn-desc-ok    { color: var(--muted); }
+  .conn-desc-error { color: var(--clr-conn-error); }
+
+   tbody tr.row-hidden { display: none; }
+
+   /* Time-gap separators between packets */
+   tbody tr.gap-small > td  { border-top: 2px solid #1a3a1a; }
+   tbody tr.gap-medium > td { border-top: 3px solid #353d45; }
+   tbody tr.gap-large > td  { border-top: 3px solid #3a2020; }
+
+  td { padding: 5px 12px; vertical-align: top; white-space: nowrap; }
+  td.data-cell { white-space: pre-wrap; overflow-wrap: break-word; max-width: 700px; }
+  td.data-cell.pkt-desc { color: var(--muted); }
+  td.data-cell.raw-hex  { color: var(--text); }
+
+  .dir-c2s { color: var(--orange); }
+  .dir-s2c { color: var(--blue); }
+  .id-pkt   { font-weight: 700; color: var(--accent2); }
+  .id-raw-read    { color: var(--clr-raw-read);    font-weight: 600; }
+  .id-decrypted   { color: var(--clr-decrypted);   font-weight: 600; }
+  .id-pre-encrypt { color: var(--clr-pre-encrypt); font-weight: 600; }
+  .id-raw-write   { color: var(--clr-raw-write);   font-weight: 600; }
+  .ts-cell  { color: var(--muted2); }
+
+  #empty-hint { padding: 40px; text-align: center; color: var(--muted2); font-size: 13px; }
+  .hidden { display: none; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+
+  @media (max-width: 900px) {
+    #sidebar { width: 120px; min-width: 100px; font-size: 11px; }
+    #session-list li { padding: 8px 10px; }
+    .sess-phase { display: none; }
+    .col-time, .col-dir, .col-len { display: none; }
+    #filter-box { width: 140px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h2><span class="h2-title">Sessions</span><nav><a href="/manager">Manager</a></nav></h2>
+  <div id="sidebar-filler"></div>
+  <ul id="session-list"><li id="no-sessions">No active sessions</li></ul>
+</div>
+
+<div id="main">
+  <div id="toolbar">
+    <h1><span id="ws-status" title="disconnected"></span><span id="session-label">Select a session</span></h1>
+    <div id="toolbar-content">
+      <div id="raw-panel">
+        <div id="stage-filter">
+          <button class="stage-btn active" data-stage="raw_read"    title="Encrypted bytes read from socket">RdRaw</button>
+          <button class="stage-btn active" data-stage="decrypted"   title="Bytes after decryption">Dec</button>
+          <button class="stage-btn active" data-stage="pre_encrypt" title="Plaintext before encryption">Enc</button>
+          <button class="stage-btn active" data-stage="raw_write"   title="Encrypted bytes written to socket">WrRaw</button>
+        </div>
+        <button id="btn-show-raw" class="btn" title="Show/hide raw transport bytes">Raw</button>
+      </div>
+      <div id="filter-group">
+        <button id="btn-dim" title="Toggle filter mode: Dim / Hide / All">Dim</button>
+        <button id="filter-dir" title="Filter direction: ⇄ (both) / C→S / S→C">⇄</button>
+      </div>
+      <div id="pkts-panel">
+        <button id="btn-show-pkts" class="btn toggle-on" title="Show/hide decoded packets">Pkts</button>
+        <button id="btn-log-mode" class="btn" title="Toggle between decoded description and raw hex dump">Desc</button>
+        <div id="filter-box">
+          <input id="filter-input" type="text" placeholder="e.g. 0xBF 0x20 32" spellcheck="false">
+          <button id="btn-filter-clear" title="Clear filter">&times;</button>
+        </div>
+      </div>
+      <div id="action-group">
+        <button id="btn-pause" class="btn">Pause</button>
+        <button id="btn-clear" class="btn">Clear</button>
+      </div>
+      <div id="history-wrap">
+        <button id="btn-history-mode" class="btn" title="Switch between row count and time limit">Rows</button>
+        <input id="history-input" type="text" value="2000" title="History limit (rows or seconds)">
+      </div>
+    </div>
+  </div>
+
+  <div id="table-wrap">
+    <div id="empty-hint">Select a session from the sidebar to start watching packets.</div>
+    <table id="packet-table" class="hidden">
+      <thead><tr>
+        <th class="col-time" style="width:90px">Time</th>
+        <th class="col-dir"  style="width:50px">Dir</th>
+        <th                  style="width:90px">ID / Stage</th>
+        <th class="col-len"  style="width:50px">Len</th>
+        <th>Data</th>
+      </tr></thead>
+      <tbody id="packet-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────
+let activeSessionId = null;
+let sessionGen = 0;
+let ws = null;
+let paused  = false;
+let hexMode = false;
+let showRaw = false;
+let showPkts = true;
+const STAGES = ['raw_read', 'decrypted', 'pre_encrypt', 'raw_write'];
+let activeStages = new Set(STAGES);
+
+let filterDir  = '';
+let filterMode = 'dim';
+let filterIds  = new Set();
+
+let historyMode  = 'rows';
+let historyLimit = 1000;
+let rowCount     = 0;
+let autoScroll   = true;
+
+let rowQueue      = [];
+let rafScheduled  = false;
+let sidebarIncr   = 0;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────
+const sessionList   = document.getElementById('session-list');
+const noSessions    = document.getElementById('no-sessions');
+const sessionLabel  = document.getElementById('session-label');
+const wsStatus      = document.getElementById('ws-status');
+const filterBox     = document.getElementById('filter-box');
+const filterInput   = document.getElementById('filter-input');
+const filterDirBtn  = document.getElementById('filter-dir');
+const btnFilterClear= document.getElementById('btn-filter-clear');
+const btnDim        = document.getElementById('btn-dim');
+const btnShowRaw    = document.getElementById('btn-show-raw');
+const btnShowPkts   = document.getElementById('btn-show-pkts');
+const stageFilter   = document.getElementById('stage-filter');
+const stageBtns     = document.querySelectorAll('.stage-btn');
+const btnPause      = document.getElementById('btn-pause');
+const btnLogMode    = document.getElementById('btn-log-mode');
+const btnClear      = document.getElementById('btn-clear');
+const btnHistoryMode= document.getElementById('btn-history-mode');
+const historyInput  = document.getElementById('history-input');
+const packetTable   = document.getElementById('packet-table');
+const packetBody    = document.getElementById('packet-body');
+const emptyHint     = document.getElementById('empty-hint');
+const tableWrap     = document.getElementById('table-wrap');
+
+// ── Server info ───────────────────────────────────────────────────────────
+// (raw logging is per-instance — Raw button is always visible)
+
+// ── Session list WS ───────────────────────────────────────────────────────
+let sessionsWs = null;
+function openSessionsSocket() {
+  if (sessionsWs) { sessionsWs.close(); sessionsWs = null; }
+  sessionsWs = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/sessions`);
+  sessionsWs.addEventListener('message', ev => {
+    try { const msg = JSON.parse(ev.data); if (msg.type === 'sessions') renderSessionList(msg.sessions); } catch (_) {}
+  });
+  sessionsWs.addEventListener('close', () => { sessionsWs = null; setTimeout(openSessionsSocket, 2000); });
+  sessionsWs.addEventListener('error', () => sessionsWs?.close());
+}
+
+function renderSessionList(sessions) {
+  [...sessionList.querySelectorAll('li:not(#no-sessions)')].forEach(el => el.remove());
+  if (!sessions.length) { noSessions.style.display = ''; return; }
+  noSessions.style.display = 'none';
+  sessions.sort((a, b) => a.started_at - b.started_at);
+  for (const s of sessions) {
+    const li = document.createElement('li');
+    li.dataset.id = s.id;
+    if (s.id === activeSessionId) li.classList.add('active');
+    const phaseLow = s.phase.toLowerCase();
+    const phaseClass = phaseLow.includes('login') ? 'login' : 'game';
+    let accountRow = '';
+    if (s.character) {
+      const a = s.account ? ` <span class="sess-acct-label">(${escHtml(s.account)})</span>` : '';
+      accountRow = `<div class="sess-account">${escHtml(s.character)}${a}</div>`;
+    } else if (s.account) accountRow = `<div class="sess-account">${escHtml(s.account)}</div>`;
+    li.innerHTML = `<div class="sess-addr">${escHtml(s.addr)}<span class="sess-phase ${phaseClass}">${escHtml(s.phase)}</span></div>${accountRow}<div class="sess-meta">#${s.id} &bull; ${s.packet_count} pkts</div>`;
+    li.addEventListener('click', () => selectSession(s.id, s.addr));
+    sessionList.appendChild(li);
+  }
+  if (activeSessionId !== null && !sessions.find(s => s.id === activeSessionId))
+    setWsStatus('Session ended', 'error');
+}
+
+// ── Session selection ─────────────────────────────────────────────────────
+function selectSession(id, addr) {
+  if (activeSessionId === id && ws?.readyState === WebSocket.OPEN) return;
+  activeSessionId = id;
+  sessionGen++;
+  document.querySelectorAll('#session-list li').forEach(li =>
+    li.classList.toggle('active', parseInt(li.dataset.id) === id));
+  sessionLabel.textContent = addr + '  #' + id;
+  clearTable();
+  openWs(id);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+function openWs(sessionId) {
+  if (ws) { ws.close(); ws = null; }
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/${sessionId}`);
+  const gen = sessionGen;
+
+  ws.addEventListener('open', () => { if (gen === sessionGen) setWsStatus('connected', 'connected'); });
+
+  ws.addEventListener('message', ev => {
+    if (gen !== sessionGen) return;
+    try {
+      const msg = JSON.parse(ev.data);
+
+      // History batch: {"type":"history","entries":[...]}
+      if (msg.type === 'history') {
+        const entries = msg.entries;
+        if (historyMode === 'rows') {
+          const ov = (rowCount + entries.length) - historyLimit;
+          if (ov > 0) pruneRows(ov);
+        }
+        // unlimited mode: no pruning
+        const frag = document.createDocumentFragment();
+        for (const e of entries) frag.appendChild(buildEntry(e));
+        packetBody.appendChild(frag);
+        rowCount += entries.length;
+        reapplyGaps();
+        showTable();
+        if (autoScroll) tableWrap.scrollTop = tableWrap.scrollHeight;
+        return;
+      }
+
+      // Live entry: {"type":"packet",...} or {"type":"raw",...} or {"type":"connection",...}
+      if (msg.type === 'packet' || msg.type === 'raw' || msg.type === 'connection') {
+        enqueue(msg, gen);
+      }
+    } catch (_) {}
+  });
+
+  ws.addEventListener('close', () => { if (gen === sessionGen) { if (ws) setWsStatus('disconnected', 'error'); ws = null; } });
+  ws.addEventListener('error', () => { if (gen === sessionGen) setWsStatus('error', 'error'); });
+}
+
+// ── RAF-batched queue ─────────────────────────────────────────────────────
+function enqueue(entry, gen) {
+  rowQueue.push({ gen, entry });
+  if (entry.type === 'packet') sidebarIncr++;
+  if (!rafScheduled) { rafScheduled = true; requestAnimationFrame(flushQueue); }
+}
+
+function flushQueue() {
+  rafScheduled = false;
+  if (!rowQueue.length) return;
+  const gen = sessionGen;
+  const items = rowQueue.filter(e => e.gen === gen).map(e => e.entry);
+  rowQueue = [];
+  if (!items.length) { sidebarIncr = 0; return; }
+
+  if (historyMode === 'rows') {
+    const ov = (rowCount + items.length) - historyLimit;
+    if (ov > 0) pruneRows(ov);
+  }
+  // unlimited mode: no pruning
+  const frag = document.createDocumentFragment();
+  for (const e of items) {
+    const tr = buildEntry(e);
+    frag.appendChild(tr);
+  }
+  packetBody.appendChild(frag);
+  rowCount += items.length;
+
+  if (sidebarIncr > 0) {
+    const li = sessionList.querySelector(`li[data-id="${activeSessionId}"]`);
+    if (li) {
+      const meta = li.querySelector('.sess-meta');
+      if (meta) {
+        const m = meta.textContent.match(/^(#\d+\s*•\s*)(\d+)(\s*pkts.*)$/);
+        if (m) meta.textContent = m[1] + (parseInt(m[2]) + sidebarIncr) + m[3];
+      }
+    }
+    sidebarIncr = 0;
+  }
+  reapplyGaps();
+  showTable();
+  if (!paused && autoScroll) tableWrap.scrollTop = tableWrap.scrollHeight;
+}
+
+// ── Row building ──────────────────────────────────────────────────────────
+const STAGE_ROW = { raw_read: 'row-raw-read', decrypted: 'row-decrypted', pre_encrypt: 'row-pre-encrypt', raw_write: 'row-raw-write' };
+const STAGE_ID_CLS = { raw_read: 'id-raw-read', decrypted: 'id-decrypted', pre_encrypt: 'id-pre-encrypt', raw_write: 'id-raw-write' };
+const STAGE_LABEL = { raw_read: 'RawRead', decrypted: 'Decrypted', pre_encrypt: 'PreEncrypt', raw_write: 'RawWrite' };
+
+function reapplyGaps() {
+  let prevTs = null;
+  for (const tr of packetBody.children) {
+    tr.classList.remove('gap-small', 'gap-medium', 'gap-large');
+    if (tr.classList.contains('row-hidden')) continue;
+    const ts = +tr.dataset.ts;
+    if (prevTs !== null) {
+      const delta = ts - prevTs;
+      if (delta >= 1000)       tr.classList.add('gap-large');
+      else if (delta > 150)   tr.classList.add('gap-medium');
+      else if (delta > 10)     tr.classList.add('gap-small');
+    }
+    prevTs = ts;
+  }
+}
+
+function buildEntry(e) {
+  if (e.type === 'packet') return buildPktRow(e);
+  if (e.type === 'raw')    return buildRawRow(e);
+  return buildConnRow(e);
+}
+
+function buildPktRow(p) {
+  const tr = document.createElement('tr');
+  tr.dataset.kind = 'pkt';
+  tr.dataset.id   = p.id.toLowerCase();
+  tr.dataset.dir  = p.direction;
+  tr.dataset.desc = p.desc;
+  tr.dataset.hex  = p.hex;
+  tr.dataset.ts   = p.timestamp;
+  const isC2S = p.direction.startsWith('C');
+  tr.classList.add(isC2S ? 'row-c2s' : 'row-s2c');
+  tr.appendChild(makeTd(formatTime(p.timestamp), 'ts-cell', 'col-time'));
+  tr.appendChild(makeTd(p.direction, isC2S ? 'dir-c2s' : 'dir-s2c', 'col-dir'));
+  tr.appendChild(makeTd(p.id, 'id-pkt'));
+  tr.appendChild(makeTd(String(p.len), 'col-len'));
+  tr.appendChild(makeTd(hexMode ? p.hex : p.desc, 'data-cell', hexMode ? 'raw-hex' : 'pkt-desc'));
+  applyPktVis(tr);
+  return tr;
+}
+
+function buildRawRow(e) {
+  const tr = document.createElement('tr');
+  tr.dataset.kind  = 'raw';
+  tr.dataset.stage = e.stage;
+  tr.dataset.dir   = e.direction;
+  tr.dataset.ts    = e.timestamp;
+  tr.classList.add(STAGE_ROW[e.stage] || 'row-raw-read');
+  const isC2S = e.direction.startsWith('C');
+  tr.appendChild(makeTd(formatTime(e.timestamp), 'ts-cell', 'col-time'));
+  tr.appendChild(makeTd(e.direction, isC2S ? 'dir-c2s' : 'dir-s2c', 'col-dir'));
+  tr.appendChild(makeTd(STAGE_LABEL[e.stage] || e.stage, STAGE_ID_CLS[e.stage] || ''));
+  tr.appendChild(makeTd(String(e.len), 'col-len'));
+  tr.appendChild(makeTd(e.hex, 'data-cell', 'raw-hex'));
+  applyRawVis(tr);
+  return tr;
+}
+
+function buildConnRow(e) {
+  const tr = document.createElement('tr');
+  tr.dataset.kind = 'conn';
+  tr.dataset.ts   = e.timestamp;
+  tr.classList.add('row-conn');
+
+  const isClient = e.role === 'client';
+  const roleLabel = isClient ? 'Client' : 'Server';
+  const roleClass = isClient ? 'id-conn-client' : 'id-conn-server';
+
+  let kindLabel, descClass;
+  if (e.kind === 'connected') {
+    kindLabel = 'Connected';
+    descClass = 'conn-desc-ok';
+  } else if (e.kind === 'error') {
+    kindLabel = 'Error';
+    descClass = 'conn-desc-error';
+  } else {
+    kindLabel = 'Disconnected';
+    descClass = 'conn-desc-ok';
+  }
+
+  const desc = e.kind === 'error'
+    ? `${e.addr} — ${e.message || ''}`
+    : e.addr;
+
+  tr.appendChild(makeTd(formatTime(e.timestamp), 'ts-cell', 'col-time'));
+  tr.appendChild(makeTd('', 'col-dir'));                          // no direction
+  tr.appendChild(makeTd(roleLabel, roleClass));
+  tr.appendChild(makeTd('', 'col-len'));                          // no length
+  const td = document.createElement('td');
+  td.className = 'data-cell ' + descClass;
+  td.textContent = kindLabel + ': ' + desc;
+  tr.appendChild(td);
+  return tr;
+}
+
+// ── Visibility ────────────────────────────────────────────────────────────
+function applyPktVis(tr) {
+  if (!showPkts) { tr.classList.add('row-hidden'); tr.classList.remove('dimmed'); return; }
+  const matchId  = filterIds.size === 0 || filterIds.has(tr.dataset.id);
+  const matchDir = !filterDir || tr.dataset.dir === filterDir;
+  const matches  = matchId && matchDir;
+  const active   = filterIds.size > 0 || filterDir !== '';
+  tr.classList.toggle('row-hidden', filterMode === 'hide' && !matches);
+  tr.classList.toggle('dimmed', filterMode === 'dim' && !matches && active);
+}
+
+function applyRawVis(tr) {
+  if (!showRaw) { tr.classList.add('row-hidden'); tr.classList.remove('dimmed'); return; }
+  const stageOk = activeStages.has(tr.dataset.stage);
+  const dirOk   = !filterDir || tr.dataset.dir === filterDir;
+  const matches = stageOk && dirOk;
+
+  if (filterMode === 'off') {
+    // All mode: show everything, ignore stage/dir filters
+    tr.classList.remove('row-hidden', 'dimmed');
+  } else if (filterMode === 'hide') {
+    // Hide mode: hide non-matching completely
+    tr.classList.toggle('row-hidden', !matches);
+    tr.classList.remove('dimmed');
+  } else {
+    // Dim mode: show all, dim non-matching
+    tr.classList.remove('row-hidden');
+    tr.classList.toggle('dimmed', !matches);
+  }
+}
+
+function reapplyAll() {
+  for (const tr of packetBody.querySelectorAll('tr')) {
+    if (tr.dataset.kind === 'pkt')  applyPktVis(tr);
+    else if (tr.dataset.kind === 'raw') applyRawVis(tr);
+    // conn rows: always visible, nothing to reapply
+  }
+  reapplyGaps();
+}
+
+// ── Table helpers ─────────────────────────────────────────────────────────
+function pruneRows(count) {
+  let removed = 0;
+  while (removed < count) { const r = packetBody.firstElementChild; if (!r) break; r.remove(); removed++; }
+  rowCount -= removed;
+}
+
+function clearTable() {
+  packetBody.innerHTML = '';
+  rowCount = 0; rowQueue = []; sidebarIncr = 0; autoScroll = true;
+  packetTable.classList.add('hidden');
+  emptyHint.classList.remove('hidden');
+}
+
+function showTable() {
+  if (packetTable.classList.contains('hidden')) {
+    packetTable.classList.remove('hidden');
+    emptyHint.classList.add('hidden');
+  }
+}
+
+tableWrap.addEventListener('scroll', () => {
+  autoScroll = tableWrap.scrollHeight - tableWrap.scrollTop - tableWrap.clientHeight < 200;
+});
+
+// ── Filter ────────────────────────────────────────────────────────────────
+function parseFilterIds(raw) {
+  const ids = new Set(), text = raw.trim();
+  if (!text) return { ids, error: null };
+  for (const tok of text.split(/[\s,]+/).filter(Boolean)) {
+    let num;
+    if (/^0x[0-9a-fA-F]+$/i.test(tok)) num = parseInt(tok, 16);
+    else if (/^\d+$/.test(tok)) num = parseInt(tok, 10);
+    else return { ids, error: `invalid: "${tok}"` };
+    if (num < 0 || num > 255) return { ids, error: `out of range: "${tok}"` };
+    ids.add('0x' + num.toString(16).padStart(2, '0'));
+  }
+  return { ids, error: null };
+}
+
+function updateFilterUI() {
+  const { ids, error } = parseFilterIds(filterInput.value);
+  const hasText = filterInput.value.length > 0;
+  btnFilterClear.classList.toggle('active', hasText);
+  filterBox.classList.toggle('filter-error', !!error);
+  filterBox.classList.toggle('filter-active', !error && ids.size > 0);
+  filterInput.title = error ? `\u26a0 ${error}` : '';
+}
+
+function applyFilter() {
+  const { ids, error } = parseFilterIds(filterInput.value);
+  filterIds = error ? new Set() : ids;
+  updateFilterUI();
+  btnDim.classList.remove('mode-hide', 'mode-off');
+  if (filterMode === 'hide') btnDim.classList.add('mode-hide');
+  if (filterMode === 'off')  btnDim.classList.add('mode-off');
+  reapplyAll();
+}
+
+function applyLogMode() {
+  for (const tr of packetBody.querySelectorAll('tr[data-kind="pkt"]')) {
+    const td = tr.querySelector('td.data-cell');
+    if (!td) continue;
+    td.textContent = hexMode ? tr.dataset.hex : tr.dataset.desc;
+    td.className = 'data-cell ' + (hexMode ? 'raw-hex' : 'pkt-desc');
+  }
+}
+
+// ── History pruning ───────────────────────────────────────────────────────
+function pruneByAge() {
+  if (historyMode !== 'secs') return;
+  const cutoff = Date.now() - historyLimit * 1000;
+  let count = 0, el = packetBody.firstElementChild;
+  while (el && +el.dataset.ts < cutoff) { count++; el = el.nextElementSibling; }
+  if (count > 0) pruneRows(count);
+}
+setInterval(pruneByAge, 1000);
+
+// ── Controls ──────────────────────────────────────────────────────────────
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'Resume' : 'Pause';
+  btnPause.classList.toggle('paused', paused);
+  if (!paused) { autoScroll = true; tableWrap.scrollTop = tableWrap.scrollHeight; }
+});
+
+btnClear.addEventListener('click', () => {
+  packetBody.innerHTML = ''; rowCount = 0; rowQueue = []; sidebarIncr = 0;
+});
+
+let filterDebounceTimer = null;
+filterInput.addEventListener('input', () => {
+  updateFilterUI();
+  const delay = rowCount > 5000 ? 300 : rowCount > 1000 ? 150 : 0;
+  if (delay === 0) { applyFilter(); return; }
+  clearTimeout(filterDebounceTimer);
+  filterDebounceTimer = setTimeout(applyFilter, delay);
+});
+filterDirBtn.addEventListener('click', () => {
+  const dirs = [{ value: '', label: '⇄', cls: '' }, { value: 'C→S', label: 'C→S', cls: 'dir-c2s' }, { value: 'S→C', label: 'S→C', cls: 'dir-s2c' }];
+  const idx = dirs.findIndex(d => d.value === filterDir);
+  const next = dirs[(idx + 1) % dirs.length];
+  filterDir = next.value;
+  filterDirBtn.textContent = next.label;
+  filterDirBtn.className = next.cls || '';
+  reapplyAll();
+});
+btnFilterClear.addEventListener('click', () => { filterInput.value = ''; filterInput.focus(); applyFilter(); });
+
+const DIM_MODES = ['dim', 'hide', 'off'], DIM_LABELS = { dim: 'Dim', hide: 'Hide', off: 'All' };
+btnDim.addEventListener('click', () => {
+  filterMode = DIM_MODES[(DIM_MODES.indexOf(filterMode) + 1) % DIM_MODES.length];
+  btnDim.textContent = DIM_LABELS[filterMode];
+  applyFilter();
+});
+
+btnLogMode.addEventListener('click', () => {
+  hexMode = !hexMode;
+  btnLogMode.textContent = hexMode ? 'Hexs' : 'Desc';
+  btnLogMode.classList.toggle('hex-mode', hexMode);
+  applyLogMode();
+});
+
+// ── Show Pkts / Raw toggles ───────────────────────────────────────────────
+btnShowPkts.addEventListener('click', () => {
+  showPkts = !showPkts;
+  btnShowPkts.classList.toggle('toggle-on', showPkts);
+  btnLogMode.classList.toggle('hidden', !showPkts);
+  filterBox.classList.toggle('hidden', !showPkts);
+  reapplyAll();
+});
+
+btnShowRaw.addEventListener('click', () => {
+  showRaw = !showRaw;
+  btnShowRaw.classList.toggle('toggle-on', showRaw);
+  stageFilter.classList.toggle('visible', showRaw);
+  reapplyAll();
+});
+
+stageBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const stage = btn.dataset.stage;
+    if (activeStages.has(stage)) {
+      activeStages.delete(stage); btn.classList.remove('active');
+    } else {
+      activeStages.add(stage); btn.classList.add('active');
+    }
+    for (const tr of packetBody.querySelectorAll('tr[data-kind="raw"]')) applyRawVis(tr);
+    reapplyGaps();
+  });
+});
+
+// ── History controls ──────────────────────────────────────────────────────
+historyInput.addEventListener('change', () => {
+  if (historyMode === 'unlimited') return;
+  const v = parseInt(historyInput.value, 10);
+  if (!Number.isFinite(v) || v < 1) { historyInput.classList.add('input-error'); return; }
+  historyInput.classList.remove('input-error');
+  historyLimit = v;
+  if (historyMode === 'rows') { const ov = rowCount - historyLimit; if (ov > 0) pruneRows(ov); }
+  else pruneByAge();
+});
+btnHistoryMode.addEventListener('click', () => {
+  const modes = ['rows', 'secs', 'unlimited'];
+  historyMode = modes[(modes.indexOf(historyMode) + 1) % modes.length];
+  const isSecs = historyMode === 'secs';
+  const isUnlimited = historyMode === 'unlimited';
+  btnHistoryMode.textContent = isSecs ? 'Sec' : isUnlimited ? '∞' : 'Rows';
+  btnHistoryMode.classList.toggle('secs-mode', isSecs);
+  btnHistoryMode.classList.toggle('unlimited-mode', isUnlimited);
+  historyInput.disabled = isUnlimited;
+  historyInput.style.opacity = isUnlimited ? '0.3' : '';
+  historyInput.title = isSecs ? 'Keep entries from the last N seconds' : isUnlimited ? 'No limit — all rows are kept' : 'Maximum number of rows in the table';
+  if (isSecs) pruneByAge(); else if (!isUnlimited) { const ov = rowCount - historyLimit; if (ov > 0) pruneRows(ov); }
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function makeTd(text, ...classes) {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (classes.length) td.classList.add(...classes);
+  return td;
+}
+function formatTime(ms) {
+  const d = new Date(ms);
+  return String(d.getHours()).padStart(2,'0') + ':' +
+         String(d.getMinutes()).padStart(2,'0') + ':' +
+         String(d.getSeconds()).padStart(2,'0') + '.' +
+         String(d.getMilliseconds()).padStart(3,'0');
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function setWsStatus(text, cls) { wsStatus.title = text; wsStatus.className = cls; }
+
+// ── Start ─────────────────────────────────────────────────────────────────
+openSessionsSocket();
+</script>
+</body>
+</html>

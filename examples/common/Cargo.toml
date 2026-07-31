@@ -1,0 +1,33 @@
+[package]
+name = "common"
+
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+# Enables default values for --server, --client-version and --encrypted in
+# ProxyArgs.  Without this feature all three arguments are required.
+default-server = []
+default = ["default-server"]
+lua = ["dep:mlua", "dep:macros"]
+
+[dependencies]
+u-core        = { path = "../../u-core" }
+protocol      = { path = "../../protocol" }
+packets       = { path = "../../packets", features = ["serde"] }
+network       = { path = "../../network" }
+files         = { path = "../../files" }
+framework     = { path = "../../framework", features = ["serde"] }
+macros        = { path = "../../macros", optional = true }
+async-trait   = "0.1"
+clap          = { version = "4", features = ["derive"] }
+log           = "0.4.29"
+fern          = { version = "0.7", features = ["colored"] }
+colored       = "2"
+serde         = { version = "1", features = ["derive"] }
+serde_json    = "1"
+rand          = "0.9"
+tokio         = { version = "1", features = ["sync", "rt", "macros"] }
+bytes         = "1"
+mlua          = { version = "0.10", features = ["lua54", "send", "vendored"], optional = true }

@@ -1,0 +1,20 @@
+[package]
+name = "network"
+
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+proxy = ["protocol/proxy"]
+
+[dev-dependencies]
+
+[dependencies]
+u-core = { path = "../u-core" }
+u-io = { path = "../u-io" }
+protocol = { path = "../protocol", features = ["proxy"] }
+tokio = { version = "1.51.1", features = ["full"] }
+bytes = "1"
+log = "0.4.29"
+async-trait = "0.1.89"

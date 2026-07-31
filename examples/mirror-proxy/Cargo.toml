@@ -1,0 +1,29 @@
+[package]
+name = "mirror-proxy"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+default = []
+default-server = ["common/default-server"]
+
+[[bin]]
+name = "mirror-proxy"
+path = "src/main.rs"
+
+[dependencies]
+u-core = { path = "../../u-core" }
+network = { path = "../../network" }
+protocol = { path = "../../protocol" }
+packets = { path = "../../packets" }
+common = { path = "../common" }
+framework = { path = "../../framework" }
+
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+log = "0.4"
+clap = { version = "4", features = ["derive"] }
+bytes = "1"
+tokio-tungstenite = "0.26"
+futures-util = "0.3"

@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UO Proxy — Instance Manager</title>
+<style>
+  :root {
+    --bg:         #0d1117;
+    --surface:    #161b22;
+    --surface2:   #1c2128;
+    --surface3:   #21262d;
+    --border:     #30363d;
+    --border2:    #21262d;
+    --muted:      #8b949e;
+    --muted2:     #484f58;
+    --text:       #c9d1d9;
+    --text-hi:    #e6edf3;
+    --accent:     #58a6ff;
+    --accent2:    #d2a8ff;
+    --green:      #56d364;
+    --orange:     #f0883e;
+    --blue:       #79c0ff;
+    --red:        #f85149;
+    --purple:     #bc8cff;
+
+    /* Tinted backgrounds */
+    --tint-1:       #0a1f0a;   /* green */
+    --tint-1-hv:    #122a12;
+    --tint-2:       #1a0808;   /* red */
+    --tint-2-hv:    #2a0e0e;
+    --tint-2-deep:  #2a0808;
+    --tint-3:       #0a1525;   /* accent */
+    --tint-3-hv:    #0e1e35;
+    --tint-4:       #130010;   /* purple */
+    --tint-5:       #0d1a30;   /* blue */
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Body layout: sidebar + desktop ─────────────── */
+  #body-wrap {
+    flex: 1; display: flex; overflow: hidden;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  #sidebar {
+    width: 200px; min-width: 150px; flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #sidebar h2 {
+    padding: 10px 12px; font-size: 12px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    border-bottom: 1px solid var(--border2);
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px;
+  }
+  #sidebar h2 .h2-title { margin-right: auto; }
+  #sidebar h2 nav a {
+    color: var(--muted); text-decoration: none; font-size: 11px;
+    font-weight: 600; letter-spacing: 0; text-transform: none;
+    border-bottom: 1px dashed var(--muted2);
+    padding-bottom: 1px;
+    transition: color .15s, border-color .15s;
+  }
+  #sidebar h2 nav a:hover { color: var(--text-hi); border-color: var(--text-hi); }
+  #sidebar h2 nav a.active { color: var(--accent); }
+
+  #sidebar-actions {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 6px; flex-shrink: 0;
+  }
+  #sidebar-actions .btn { padding: 3px 10px; font-size: 11px; }
+  #inst-list {
+    list-style: none; overflow-y: auto; flex: 1;
+  }
+  #inst-list-empty {
+    padding: 20px 12px; color: var(--muted2); font-size: 11px;
+    text-align: center;
+  }
+
+  /* ── Sidebar item ───────────────────────────────── */
+  .sl-item {
+    border-bottom: 1px solid var(--border2);
+    border-left: 3px solid var(--muted2);
+    padding: 7px 10px 7px 9px;
+    cursor: default;
+    transition: background .15s, border-left-color .15s;
+    font-size: 12px;
+  }
+  .sl-item:hover { background: var(--surface2); }
+  .sl-item.state-running { border-left-color: var(--green); }
+  .sl-item.state-error   { border-left-color: var(--red); }
+
+  .sl-top {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sl-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .sl-dot.stopped { background: var(--muted2); }
+  .sl-dot.running { background: var(--green); }
+  .sl-dot.error   { background: var(--red); }
+
+  .sl-name {
+    font-weight: 600; color: var(--text-hi); font-size: 12px;
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sl-state {
+    font-size: 10px; font-weight: 600; flex-shrink: 0;
+    padding: 1px 5px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .sl-state.stopped { display: none; }
+  .sl-state.running { display: none; }
+  .sl-state.error   { background: var(--tint-2-deep); color: var(--red); }
+
+  /* Start/Stop кнопка встроена в sl-top — убираем отдельную строку */
+  .sl-top .btn { padding: 2px 8px; font-size: 11px; flex-shrink: 0; }
+
+  /* ── Desktop (right area) ───────────────────────── */
+  #desktop-wrap {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 5px 12px;
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    transition: background .15s; white-space: nowrap;
+  }
+  .btn:hover { background: var(--border); color: var(--text); }
+  .btn-primary {
+    color: var(--green); border-color: var(--green);
+    background: var(--tint-1);
+  }
+  .btn-primary:hover { background: var(--tint-1-hv); }
+  .btn-danger {
+    color: var(--red); border-color: var(--red);
+    background: var(--tint-2);
+  }
+  .btn-danger:hover { background: var(--tint-2-hv); }
+  .btn-accent {
+    color: var(--accent); border-color: var(--accent);
+    background: var(--tint-3);
+  }
+  .btn-accent:hover { background: var(--tint-3-hv); }
+  .btn:disabled {
+    opacity: 0.35; cursor: not-allowed;
+  }
+
+  #poll-indicator {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted2); flex-shrink: 0;
+    margin-right: 7px;
+    transition: background .3s;
+  }
+  #poll-indicator.ok { background: var(--green); }
+  #poll-indicator.err { background: var(--red); }
+
+  /* ── Desktop canvas ─────────────────────────────── */
+  #instance-list {
+    flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0;
+    position: relative;
+  }
+  #empty-hint {
+    text-align: center; color: var(--muted2); font-size: 13px;
+    padding: 40px; width: 100%;
+    position: absolute; left: 0; right: 0;
+  }
+
+  /* ── Instance card ───────────────────────────────── */
+  .inst-row {
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--muted2);
+    border-radius: 6px;
+    background: var(--surface);
+    transition: border-color .15s, box-shadow .15s;
+    width: 300px;
+    max-width: calc(100vw - 230px);
+    position: absolute;
+    cursor: default;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  .inst-row:hover { border-color: var(--border); border-left-color: var(--muted2); }
+  .inst-row.expanded { border-color: var(--muted2); }
+  .inst-row.state-error   { border-left-color: var(--red); }
+  .inst-row.state-running { border-left-color: var(--green); }
+  .inst-row.state-error:hover   { border-left-color: var(--red); }
+  .inst-row.state-running:hover { border-left-color: var(--green); }
+  .inst-row.dragging {
+    box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    border-color: var(--accent);
+    opacity: .92;
+    z-index: 10;
+  }
+
+  /* ── Card header (always visible) ───────────────── */
+  .inst-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; cursor: grab;
+    user-select: none;
+    min-height: 42px;
+  }
+  .inst-header:hover { background: var(--surface2); border-radius: 6px; }
+  .inst-header.dragging-active { cursor: grabbing; }
+
+  .inst-chevron {
+    font-size: 10px; color: var(--muted2); flex-shrink: 0;
+    transition: transform .15s; width: 12px; text-align: center;
+  }
+  .inst-row.expanded .inst-chevron { transform: rotate(90deg); }
+
+  .inst-status {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .inst-status.stopped { background: var(--muted2); }
+  .inst-status.running { background: var(--green); }
+  .inst-status.error   { background: var(--red); }
+
+  .inst-name {
+    font-weight: 600; color: var(--text-hi); font-size: 13px;
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .inst-actions {
+    display: flex; gap: 4px; flex-shrink: 0;
+  }
+  .inst-actions .btn { padding: 3px 10px; font-size: 11px; }
+
+  /* ── Detail panel (expanded) ────────────────────── */
+  .inst-detail {
+    display: none;
+    border-top: 1px solid var(--border2);
+    padding: 10px 14px 12px 14px;
+  }
+  .inst-row.expanded .inst-detail { display: block; }
+
+  /* ── Unified field: view + edit in one ──────────── */
+  .detail-field {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; padding: 3px 0;
+  }
+  .detail-label {
+    color: var(--muted); white-space: nowrap;
+    flex-shrink: 0; width: 55px; text-align: right;
+    padding: 3px 0;
+  }
+  .detail-field input[type="text"],
+  .detail-field input[type="password"],
+  .detail-field input[type="number"] {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); padding: 3px 7px;
+    font-family: inherit; font-size: 12px; outline: none;
+    transition: border-color .2s, background .2s;
+    flex: 1; min-width: 0;
+  }
+  .detail-field input:focus { border-color: var(--accent); }
+  .detail-field input.field-ro {
+    background: transparent; border-color: transparent;
+    color: var(--text-hi); cursor: default;
+  }
+  .detail-field input.field-ro:focus { border-color: transparent; }
+
+  /* ── Toggle buttons (Encrypted / Raw log / Auto-start) ── */
+  .toggle-btn {
+    background: var(--surface3); border: 1px solid var(--border);
+    color: var(--muted2); border-radius: 4px; padding: 3px 9px;
+    font-family: inherit; font-size: 11px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s, opacity .15s;
+    white-space: nowrap; user-select: none;
+    opacity: 0.45;
+  }
+  .toggle-btn:hover { opacity: 0.7; }
+  .toggle-btn[data-ro] { cursor: default; }
+  .toggle-btn[data-ro]:hover { opacity: 0.45; }
+
+  /* Each toggle keeps its color tint even when off */
+  .toggle-btn.enc-toggle              { color: var(--green); border-color: var(--green); }
+  .toggle-btn.raw-toggle              { color: var(--purple); border-color: var(--purple); }
+  .toggle-btn.auto-toggle             { color: var(--green); border-color: var(--green); }
+  .toggle-btn.socks5-toggle           { color: var(--accent); border-color: var(--accent); }
+
+  /* Active state: full opacity + tinted background */
+  .toggle-btn.enc-on              { opacity: 1; background: var(--tint-1); }
+  .toggle-btn.raw-on              { opacity: 1; background: var(--tint-4); }
+  .toggle-btn.auto-on             { opacity: 1; background: var(--tint-1); }
+  .toggle-btn.socks5-toggle.enc-on { opacity: 1; background: var(--tint-5); }
+
+  .detail-error {
+    margin-top: 8px; padding: 6px 10px;
+    background: var(--tint-2); border: 1px solid var(--red); border-radius: 4px;
+    color: var(--red); font-size: 11px;
+  }
+
+  .detail-bottom {
+    margin-top: 8px; display: flex; gap: 4px;
+    border-top: 1px solid var(--border2);
+    padding-top: 8px;
+  }
+  .detail-bottom .btn { padding: 3px 8px; font-size: 11px; }
+
+  .form-error {
+    padding: 6px 10px;
+    background: var(--tint-2); border: 1px solid var(--red); border-radius: 4px;
+    color: var(--red); font-size: 11px;
+    display: none;
+    margin-top: 6px;
+  }
+  .form-error.visible { display: block; }
+
+  /* ── SOCKS5 collapsible body ────────────────────── */
+  .socks5-body {
+    padding: 4px 6px 4px 6px;
+    margin-top: 4px;
+    border-left: 2px solid var(--muted2);
+    background: var(--surface2);
+    border-radius: 0 4px 4px 0;
+  }
+
+  /* ── Proxy section (static, always visible) ─────── */
+  .proxy-section { margin-top: 6px; }
+  .proxy-body { padding-top: 2px; }
+  .section-heading {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted2);
+    padding: 4px 0 3px;
+    border-top: 1px solid var(--border2);
+    margin-top: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .section-heading::after {
+    content: ''; flex: 1; height: 1px; background: var(--border2);
+  }
+  .section-heading:first-child {
+    border-top: none; margin-top: 0;
+  }
+
+  /* ── Shared label for row1 / row2 ──────────────── */
+  .detail-row1 .lbl-fixed,
+  .detail-row2 .lbl-fixed {
+    color: var(--muted); white-space: nowrap; flex-shrink: 0;
+    width: 55px; text-align: right;
+    font-size: 12px; padding: 3px 0;
+  }
+
+  /* ── Row-1: Name [___] Ver [___] [Enc] ─────────── */
+  .detail-row1 {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 3px 0;
+  }
+  .detail-row1 .name-input {
+    flex: 1; min-width: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); padding: 3px 7px;
+    font-family: inherit; font-size: 12px; outline: none;
+    transition: border-color .2s, background .2s;
+  }
+  .detail-row1 .ver-input {
+    flex: 1; min-width: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); padding: 3px 7px;
+    font-family: inherit; font-size: 12px; outline: none;
+    transition: border-color .2s, background .2s;
+  }
+  .detail-row1 input:focus { border-color: var(--accent); }
+  .detail-row1 input.field-ro {
+    background: transparent; border-color: transparent;
+    color: var(--text-hi); cursor: default;
+  }
+  .detail-row1 input.field-ro:focus { border-color: transparent; }
+
+  /* ── Row-2: Server ──────────────────────────────── */
+  .detail-row2 {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 3px 0;
+  }
+  .detail-row2 input[type="text"] {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); padding: 3px 7px;
+    font-family: inherit; font-size: 12px; outline: none;
+    transition: border-color .2s, background .2s;
+    flex: 1; min-width: 0;
+  }
+  .detail-row2 input:focus { border-color: var(--accent); }
+  .detail-row2 input.field-ro {
+    background: transparent; border-color: transparent;
+    color: var(--text-hi); cursor: default;
+  }
+  .detail-row2 input.field-ro:focus { border-color: transparent; }
+
+  /* ── Proxy inner toggle-btn row ─────────────────── */
+  .proxy-toggles-row {
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 4px 0 2px;
+  }
+
+  /* ── Enc / SOCKS buttons — same fixed width ─────── */
+  .detail-row1 .toggle-btn,
+  .detail-row2 .toggle-btn {
+    width: 52px; flex-shrink: 0; text-align: center;
+  }
+
+  /* ── New instance card ──────────────────────────── */
+  .inst-row.new-instance {
+    border-color: var(--green);
+    border-left-color: var(--green);
+  }
+  .inst-row.new-instance:hover {
+    border-color: var(--green);
+    border-left-color: var(--green);
+  }
+
+  /* ── Scrollbar ──────────────────────────────────── */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted2); }
+
+  @media (max-width: 900px) {
+    #sidebar { width: 120px; min-width: 100px; font-size: 11px; }
+    .sl-item { padding: 5px 7px 5px 6px; }
+    #sidebar-actions { flex-wrap: wrap; }
+    .inst-row { max-width: calc(100vw - 140px); }
+  }
+</style>
+</head>
+<body>
+
+<div id="body-wrap">
+
+  <!-- ── Sidebar ────────────────────────────────────── -->
+  <div id="sidebar">
+    <h2>
+      <span id="poll-indicator" title="Polling status"></span>
+      <span class="h2-title">Instances</span>
+      <nav>
+        <a href="/">Inspector</a>
+      </nav>
+    </h2>
+    <div id="sidebar-actions">
+      <button class="btn btn-primary" id="btn-new" title="Create a new proxy instance">+ New</button>
+      <button class="btn" id="btn-refresh" title="Refresh now">Reload</button>
+    </div>
+    <ul id="inst-list">
+      <li id="inst-list-empty">No instances</li>
+    </ul>
+  </div>
+
+  <!-- ── Desktop ────────────────────────────────────── -->
+  <div id="desktop-wrap">
+    <div id="instance-list">
+      <div id="empty-hint">Double-click an instance in the sidebar to open it here.</div>
+
+      <div id="instances-container"></div>
+    </div>
+  </div>
+
+</div><!-- #body-wrap -->
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────
+let instances = [];
+let expandedIds = new Set();
+let desktopIds  = new Set(); // ids of cards currently on the desktop
+let openSections = new Set(); // 'proxy-{id}' | 'socks-{id}'
+let editingId = null;
+let newCard = null;           // the temporary "New Instance" card element
+let pollTimer = null;
+const POLL_INTERVAL = 3000;
+const LS_POSITIONS_KEY = 'uo-proxy-card-positions';
+const LS_EXPANDED_KEY  = 'uo-proxy-card-expanded';
+const LS_DESKTOP_KEY   = 'uo-proxy-card-desktop';
+const CARD_WIDTH = 300;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────
+const instanceList  = document.getElementById('instance-list');
+const container     = document.getElementById('instances-container');
+const emptyHint     = document.getElementById('empty-hint');
+const btnNew        = document.getElementById('btn-new');
+const btnRefresh    = document.getElementById('btn-refresh');
+const pollDot       = document.getElementById('poll-indicator');
+const instList      = document.getElementById('inst-list');
+const instListEmpty = document.getElementById('inst-list-empty');
+
+// ── Default config values ────────────────────────────────────────────────
+const DEFAULTS = {
+  name: '',
+  server: '',
+  listen_addr: '0.0.0.0:2593',
+  proxy_host: '127.0.0.1',
+  client_version: '3.0.8.0',
+  encrypted: true,
+  raw_log: false,
+  connector: { socks5_addr: null, socks5_user: null, socks5_pass: null },
+};
+
+// ── Field definitions ────────────────────────────────────────────────────
+const PROXY_FIELDS = [
+  { key: 'listen_addr', label: 'Listen',  type: 'text',   placeholder: '0.0.0.0:2593', path: c => c.listen_addr },
+  { key: 'proxy_host',  label: 'Host',    type: 'text',   placeholder: '127.0.0.1',    path: c => c.proxy_host  },
+];
+
+const SOCKS_FIELDS = [
+  { key: 'socks5_addr', label: 'Address',  placeholder: '127.0.0.1:1080', path: c => c.connector?.socks5_addr },
+  { key: 'socks5_user', label: 'Username', placeholder: '(optional)',     path: c => c.connector?.socks5_user },
+  { key: 'socks5_pass', label: 'Password', placeholder: '(optional)',     path: c => c.connector?.socks5_pass, secret: true },
+];
+
+// ── API ──────────────────────────────────────────────────────────────────
+async function apiGet(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function apiPost(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+async function apiPut(url, body) {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+async function apiDelete(url) {
+  const res = await fetch(url, { method: 'DELETE' });
+  return res.json();
+}
+
+// ── Polling ──────────────────────────────────────────────────────────────
+async function fetchInstances() {
+  try {
+    const data = await apiGet('/api/instances');
+    if (data.ok) {
+      instances = data.instances;
+      setPollStatus('ok');
+      render();
+    } else {
+      setPollStatus('err');
+    }
+  } catch (e) {
+    setPollStatus('err');
+  }
+}
+
+function setPollStatus(s) {
+  pollDot.className = s;
+  pollDot.title = s === 'ok' ? 'Connected' : 'Connection error';
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(fetchInstances, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ── localStorage helpers ──────────────────────────────────────────────────
+function loadExpanded() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_EXPANDED_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveExpanded() {
+  localStorage.setItem(LS_EXPANDED_KEY, JSON.stringify([...expandedIds]));
+}
+
+function loadDesktop() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_DESKTOP_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveDesktop() {
+  localStorage.setItem(LS_DESKTOP_KEY, JSON.stringify([...desktopIds]));
+}
+
+function loadPositions() {
+  try { return JSON.parse(localStorage.getItem(LS_POSITIONS_KEY) || '{}'); }
+  catch { return {}; }
+}
+function savePositions(positions) {
+  localStorage.setItem(LS_POSITIONS_KEY, JSON.stringify(positions));
+}
+function getCardPosition(id) { return loadPositions()[id] || null; }
+function setCardPosition(id, x, y) {
+  const p = loadPositions(); p[id] = { x, y }; savePositions(p);
+}
+function removeCardPosition(id) {
+  const p = loadPositions(); delete p[id]; savePositions(p);
+}
+
+// ── Desktop placement helpers ─────────────────────────────────────────────
+function centerPosition() {
+  const rect = instanceList.getBoundingClientRect();
+  const x = Math.max(10, Math.round((rect.width - CARD_WIDTH) / 2));
+  const y = Math.max(10, Math.round(instanceList.scrollTop + rect.height / 2 - 60));
+  return { x, y };
+}
+function applyPosition(row, x, y) {
+  row.style.left = x + 'px';
+  row.style.top  = y + 'px';
+}
+
+// ── Send to desktop / back to list ────────────────────────────────────────
+function sendToDesktop(id) {
+  desktopIds.add(id);
+  saveDesktop();
+  expandedIds.add(id);
+  saveExpanded();
+  render();
+  // Bring the card to front and focus
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (row) bringToFront(row);
+}
+
+function sendToList(id) {
+  if (editingId === id) cancelEdit(id);
+  desktopIds.delete(id);
+  saveDesktop();
+  expandedIds.delete(id);
+  saveExpanded();
+  // Remove the card element immediately
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (row) row.remove();
+  updateContainerHeight();
+  render();
+}
+
+// ── Drag-and-drop ────────────────────────────────────────────────────────
+function initDrag(row, id) {
+  const hdr = row.querySelector('.inst-header');
+  let pendingExpand = null;
+  let touchHandled = false;
+
+  // Any click/tap on the card brings it to front
+  row.addEventListener('mousedown', () => bringToFront(row));
+  row.addEventListener('touchstart', () => bringToFront(row), { passive: true });
+
+  // Double-click on header → send card back to sidebar (not for new-instance card)
+  hdr.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.inst-actions')) return;
+    if (id === 'new') return;
+    // Cancel the toggleExpand that fired on the second mouseup
+    if (pendingExpand !== null) { clearTimeout(pendingExpand); pendingExpand = null; }
+    sendToList(id);
+  });
+
+  hdr.addEventListener('mousedown', (e) => {
+    if (touchHandled) { touchHandled = false; return; }
+    if (e.target.closest('.inst-actions')) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+
+    const startMouseX = e.clientX;
+    const startMouseY = e.clientY;
+    const startLeft   = parseInt(row.style.left, 10) || 0;
+    const startTop    = parseInt(row.style.top,  10) || 0;
+    let moved = false;
+
+    row.classList.add('dragging');
+    hdr.classList.add('dragging-active');
+    bringToFront(row);
+
+    function onMouseMove(e) {
+      const dx = e.clientX - startMouseX;
+      const dy = e.clientY - startMouseY;
+      if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+      moved = true;
+      const listRect = instanceList.getBoundingClientRect();
+      // Allow card to partially overflow: keep at least 60px visible inside
+      const minVisible = 60;
+      const maxX = Math.max(0, listRect.width  - minVisible);
+      const maxY = Math.max(0, instanceList.scrollHeight + 200);
+      const newX = Math.max(0, Math.min(maxX, startLeft + dx));
+      const newY = Math.max(0, Math.min(maxY, startTop  + dy));
+      applyPosition(row, newX, newY);
+      updateContainerHeight();
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup',   onMouseUp);
+      row.classList.remove('dragging');
+      hdr.classList.remove('dragging-active');
+      if (moved) {
+        const x = parseInt(row.style.left, 10) || 0;
+        const y = parseInt(row.style.top,  10) || 0;
+        if (id !== 'new') setCardPosition(id, x, y);
+      } else {
+        if (id === 'new') return;
+        // Delay to allow dblclick to cancel if this mouseup is part of a double-click
+        pendingExpand = setTimeout(() => { pendingExpand = null; toggleExpand(id); }, 220);
+      }
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onMouseUp);
+  });
+
+  // ── Touch support for mobile ──
+  hdr.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.inst-actions')) return;
+    touchHandled = true;
+    const touch = e.touches[0];
+    const startTouchX = touch.clientX;
+    const startTouchY = touch.clientY;
+    const startLeft   = parseInt(row.style.left, 10) || 0;
+    const startTop    = parseInt(row.style.top,  10) || 0;
+    let moved = false;
+
+    row.classList.add('dragging');
+    hdr.classList.add('dragging-active');
+    bringToFront(row);
+
+    function onTouchMove(e) {
+      const t = e.touches[0];
+      const dx = t.clientX - startTouchX;
+      const dy = t.clientY - startTouchY;
+      if (!moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      moved = true;
+      e.preventDefault();
+      const listRect = instanceList.getBoundingClientRect();
+      const minVisible = 60;
+      const maxX = Math.max(0, listRect.width - minVisible);
+      const maxY = Math.max(0, instanceList.scrollHeight + 200);
+      const newX = Math.max(0, Math.min(maxX, startLeft + dx));
+      const newY = Math.max(0, Math.min(maxY, startTop  + dy));
+      applyPosition(row, newX, newY);
+      updateContainerHeight();
+    }
+
+    function onTouchEnd() {
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend',  onTouchEnd);
+      row.classList.remove('dragging');
+      hdr.classList.remove('dragging-active');
+      if (moved) {
+        const x = parseInt(row.style.left, 10) || 0;
+        const y = parseInt(row.style.top,  10) || 0;
+        if (id !== 'new') setCardPosition(id, x, y);
+      } else {
+        if (id === 'new') return;
+        toggleExpand(id);
+      }
+    }
+
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend',  onTouchEnd);
+  }, { passive: true });
+}
+
+function bringToFront(row) {
+  const all = container.querySelectorAll('.inst-row');
+  let maxZ = 1;
+  for (const r of all) {
+    const z = parseInt(r.style.zIndex, 10) || 1;
+    if (z > maxZ) maxZ = z;
+  }
+  row.style.zIndex = maxZ + 1;
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────
+function render() {
+  renderSidebar();
+  renderDesktop();
+}
+
+// ── Sidebar rendering ─────────────────────────────────────────────────────
+function renderSidebar() {
+  // Items in sidebar = instances NOT on desktop
+  const sidebarInstances = instances.filter(i => !desktopIds.has(i.id));
+
+  // Remove stale items
+  for (const el of [...instList.querySelectorAll('.sl-item')]) {
+    const id = +el.dataset.id;
+    const inst = sidebarInstances.find(i => i.id === id);
+    if (!inst) el.remove();
+  }
+
+  // Update or create
+  let prevEl = instListEmpty;
+  for (const inst of sidebarInstances) {
+    let li = instList.querySelector(`.sl-item[data-id="${inst.id}"]`);
+    if (!li) {
+      li = buildSidebarItem(inst);
+      instList.appendChild(li);
+    } else {
+      updateSidebarItem(li, inst);
+    }
+    prevEl = li;
+  }
+
+  instListEmpty.style.display = sidebarInstances.length === 0 ? '' : 'none';
+}
+
+function buildSidebarItem(inst) {
+  const li = document.createElement('li');
+  li.dataset.id = inst.id;
+  applySidebarItemState(li, inst);
+  li.innerHTML = buildSidebarItemHTML(inst);
+  li.addEventListener('dblclick', () => sendToDesktop(inst.id));
+  return li;
+}
+
+function updateSidebarItem(li, inst) {
+  applySidebarItemState(li, inst);
+  li.innerHTML = buildSidebarItemHTML(inst);
+}
+
+function applySidebarItemState(li, inst) {
+  li.className = 'sl-item';
+  if (inst.state === 'running') li.classList.add('state-running');
+  if (inst.state === 'error')   li.classList.add('state-error');
+}
+
+function buildSidebarItemHTML(inst) {
+  const s = inst.state;
+  const isRunning = s === 'running';
+  const startStop = isRunning
+    ? `<button class="btn btn-danger" onclick="event.stopPropagation();doStop(${inst.id})">Stop</button>`
+    : `<button class="btn btn-primary" onclick="event.stopPropagation();doStart(${inst.id})">Start</button>`;
+  return `
+    <div class="sl-top">
+      <span class="sl-dot ${s}"></span>
+      <span class="sl-name">${esc(inst.config.name || 'Unnamed')}</span>
+      <span class="sl-state ${s}">${esc(s)}</span>
+      ${startStop}
+    </div>`;
+}
+
+// ── Desktop rendering ─────────────────────────────────────────────────────
+function renderDesktop() {
+  const desktopInstances = instances.filter(i => desktopIds.has(i.id));
+  const hasCards = desktopInstances.length > 0 || newCard !== null;
+  emptyHint.style.display = (!hasCards) ? '' : 'none';
+
+  updateContainerHeight();
+
+  const currentIds = new Set(instances.map(i => i.id));
+
+  // Remove cards for deleted instances (skip the "new instance" card)
+  for (const el of [...container.querySelectorAll('.inst-row')]) {
+    if (el.dataset.id === 'new') continue;
+    const id = +el.dataset.id;
+    if (!currentIds.has(id) || !desktopIds.has(id)) {
+      removeCardPosition(id);
+      el.remove();
+    }
+  }
+
+  // Update or create desktop cards
+  for (const inst of desktopInstances) {
+    let row = container.querySelector(`.inst-row[data-id="${inst.id}"]`);
+    if (!row) {
+      row = createRow(inst);
+      container.appendChild(row);
+    } else {
+      updateRow(row, inst);
+    }
+  }
+
+  updateContainerHeight();
+}
+
+function updateContainerHeight() {
+  const listH = instanceList.clientHeight;
+  let maxBottom = listH;
+  for (const row of container.querySelectorAll('.inst-row')) {
+    const top = parseInt(row.style.top, 10) || 0;
+    const bottom = top + row.offsetHeight + 20;
+    if (bottom > maxBottom) maxBottom = bottom;
+  }
+  container.style.minHeight = maxBottom + 'px';
+  container.style.position = 'relative';
+}
+
+function createRow(inst) {
+  const row = document.createElement('div');
+  row.className = 'inst-row';
+  row.dataset.id = inst.id;
+
+  const hdr = document.createElement('div');
+  hdr.className = 'inst-header';
+  hdr.innerHTML = buildHeaderHTML(inst);
+  row.appendChild(hdr);
+
+  const detail = document.createElement('div');
+  detail.className = 'inst-detail';
+  detail.innerHTML = buildDetailHTML(inst, false);
+  row.appendChild(detail);
+
+  const saved = getCardPosition(inst.id);
+  if (saved) {
+    applyPosition(row, saved.x, saved.y);
+  } else {
+    const pos = centerPosition();
+    applyPosition(row, pos.x, pos.y);
+    setCardPosition(inst.id, pos.x, pos.y);
+  }
+
+  applyRowState(row, inst);
+  initDrag(row, inst.id);
+  return row;
+}
+
+function updateRow(row, inst) {
+  const isEditing = editingId === inst.id;
+  const hdr = row.querySelector('.inst-header');
+  hdr.innerHTML = buildHeaderHTML(inst);
+  if (!isEditing) {
+    const detail = row.querySelector('.inst-detail');
+    detail.innerHTML = buildDetailHTML(inst, false);
+  }
+  applyRowState(row, inst);
+}
+
+function applyRowState(row, inst) {
+  row.classList.remove('state-running', 'state-error');
+  if (inst.state === 'running') row.classList.add('state-running');
+  if (inst.state === 'error')   row.classList.add('state-error');
+  row.classList.toggle('expanded', expandedIds.has(inst.id));
+}
+
+// ── Card header ───────────────────────────────────────────────────────────
+function buildHeaderHTML(inst) {
+  const stateClass = inst.state;
+  const isRunning = inst.state === 'running';
+
+  const startStopBtn = isRunning
+    ? `<button class="btn btn-danger" onclick="event.stopPropagation();doStop(${inst.id})" title="Stop instance">Stop</button>`
+    : `<button class="btn btn-primary" onclick="event.stopPropagation();doStart(${inst.id})" title="Start instance">Start</button>`;
+
+  return `
+    <span class="inst-chevron">&#9654;</span>
+    <span class="inst-status ${stateClass}"></span>
+    <span class="inst-name">${esc(inst.config.name || 'Unnamed')}</span>
+    <span class="inst-actions">
+      ${startStopBtn}
+    </span>
+  `;
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────
+function buildDetailHTML(inst, editing, isNew) {
+  const c = inst.config;
+  const ro     = editing ? '' : ' readonly';
+  const roCls  = editing ? '' : ' field-ro';
+  const roAttr = editing ? '' : ' data-ro';
+
+  const encOn  = c.encrypted    ? ' enc-on'  : '';
+  const rawOn  = c.raw_log      ? ' raw-on'  : '';
+  const autoOn = inst.auto_start ? ' auto-on' : '';
+  const clickEnc  = editing ? ` onclick="toggleBtnCheck(this,'encrypted')"` : '';
+  const clickRaw  = editing ? ` onclick="toggleBtnCheck(this,'raw_log')"` : '';
+  const clickAuto = editing ? ` onclick="toggleBtnCheck(this,'auto_start')"` : '';
+
+  const row1 = `
+    <div class="detail-row1">
+      <span class="lbl-fixed">Name</span>
+      <input type="text" name="name" value="${escAttr(c.name)}" placeholder="My Shard" class="name-input${roCls}"${ro}>
+    </div>
+    <div class="detail-row1">
+      <span class="lbl-fixed">Ver</span>
+      <input type="hidden" name="encrypted" value="${c.encrypted ? '1' : '0'}">
+      <input type="text" name="client_version" value="${escAttr(c.client_version)}" placeholder="3.0.8.0" class="ver-input${roCls}"${ro}>
+      <button type="button" class="toggle-btn enc-toggle${encOn}"${roAttr}${clickEnc}>Enc</button>
+    </div>`;
+
+  const socks = c.connector || {};
+  const hasSocks = !!socks.socks5_enabled;
+  const socksKey = `socks-${inst.id}`;
+  // Keep openSections in sync with the stored flag
+  if (hasSocks && !openSections.has(socksKey)) openSections.add(socksKey);
+  if (!hasSocks && !editing) openSections.delete(socksKey);
+  const socksEnabled = openSections.has(socksKey);
+  const socksOnCls = socksEnabled ? ' enc-on' : '';
+  const socksToggleAttr = editing
+    ? ` data-socks-toggle data-id="${inst.id}"`
+    : ` data-ro`;
+
+  const row2 = `
+    <div class="detail-row2">
+      <span class="lbl-fixed">Server</span>
+      <input type="text" name="server" value="${escAttr(c.server)}" placeholder="127.0.0.1:2593" class="${roCls}"${ro}>
+      ${editing ? `<input type="hidden" name="socks_enabled" value="${socksEnabled ? '1' : '0'}">` : ''}
+      <button type="button" class="toggle-btn socks5-toggle${socksOnCls}"${socksToggleAttr}>SOCKS</button>
+    </div>`;
+
+  const addrVal = (c.connector?.socks5_addr) || '';
+  const userVal = (c.connector?.socks5_user) || '';
+  const passVal = (!editing && c.connector?.socks5_pass) ? '********' : (c.connector?.socks5_pass || '');
+  const socksFields = `
+    <div class="detail-field">
+      <span class="detail-label">Address</span>
+      <input type="text" name="socks5_addr" value="${escAttr(addrVal)}" placeholder="127.0.0.1:1080" class="${roCls}"${ro}>
+    </div>
+    <div class="detail-field">
+      <span class="detail-label">Auth</span>
+      <input type="text" name="socks5_user" value="${escAttr(userVal)}" placeholder="user" class="${roCls}"${ro} style="flex:1;min-width:0">
+      <input type="${editing ? 'password' : 'text'}" name="socks5_pass" value="${escAttr(passVal)}" placeholder="pass" class="${roCls}"${ro} style="flex:1;min-width:0">
+    </div>`;
+  const socksSection = `<div class="socks5-body" style="display:${socksEnabled ? 'block' : 'none'}">${socksFields}</div>`;
+
+  const togglesRow = `
+    <div class="proxy-toggles-row">
+      <input type="hidden" name="raw_log"    value="${c.raw_log      ? '1' : '0'}">
+      <input type="hidden" name="auto_start" value="${inst.auto_start ? '1' : '0'}">
+      <button type="button" class="toggle-btn raw-toggle${rawOn}"${roAttr}${clickRaw}>Raw log</button>
+      <button type="button" class="toggle-btn auto-toggle${autoOn}"${roAttr}${clickAuto}>Auto-start</button>
+    </div>`;
+
+  let settingsFields = '';
+  for (const pf of PROXY_FIELDS) {
+    const val = pf.path(c);
+    settingsFields += `
+      <div class="detail-field">
+        <span class="detail-label">${pf.label}</span>
+        <input type="${pf.type}" name="${pf.key}" value="${escAttr(val)}" placeholder="${pf.placeholder}" class="${roCls}"${ro}${pf.type === 'number' ? ' min="1" max="65535"' : ''}>
+      </div>`;
+  }
+
+  const settingsSection = `
+    <div class="proxy-section">
+      <div class="section-heading">Settings</div>
+      <div class="proxy-body">${togglesRow}${settingsFields}</div>
+    </div>`;
+
+  let errorHTML = '';
+  if (inst.state === 'error' && inst.error) {
+    errorHTML = `<div class="detail-error">${esc(inst.error)}</div>`;
+  }
+  const formErrorHTML = editing ? '<div class="form-error"></div>' : '';
+
+  let bottomHTML;
+  if (isNew) {
+    bottomHTML = `
+      <div class="detail-bottom">
+        <button class="btn btn-primary" onclick="saveNew()">Create</button>
+        <button class="btn" onclick="hideNewForm()">Cancel</button>
+      </div>`;
+  } else if (editing) {
+    const isRunning = inst.state === 'running';
+    const saveLabel = isRunning ? 'Save+Restart' : 'Save';
+    bottomHTML = `
+      <div class="detail-bottom">
+        <button class="btn btn-primary" onclick="saveEdit(${inst.id})">${saveLabel}</button>
+        <button class="btn" onclick="cancelEdit(${inst.id})">Cancel</button>
+        <button class="btn btn-danger" onclick="doDelete(${inst.id})">Delete</button>
+      </div>`;
+  } else {
+    bottomHTML = `
+      <div class="detail-bottom">
+        <span style="flex:1"></span>
+        <button class="btn btn-accent" onclick="startEdit(${inst.id})">Edit</button>
+      </div>`;
+  }
+
+  const shardHeading = `<div class="section-heading">Shard</div>`;
+
+  return `${shardHeading}${row1}${row2}${socksSection}${settingsSection}${errorHTML}${formErrorHTML}${bottomHTML}`;
+}
+
+// ── Expand / collapse ────────────────────────────────────────────────────
+function toggleExpand(id) {
+  if (expandedIds.has(id)) {
+    expandedIds.delete(id);
+    if (editingId === id) cancelEdit(id);
+  } else {
+    expandedIds.add(id);
+    const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+    if (row) bringToFront(row);
+  }
+  saveExpanded();
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (row) {
+    row.classList.toggle('expanded', expandedIds.has(id));
+    updateContainerHeight();
+  }
+}
+
+// ── Edit mode ────────────────────────────────────────────────────────────
+function startEdit(id) {
+  const inst = instances.find(i => i.id === id);
+  if (!inst) return;
+
+  if (editingId !== null && editingId !== id) cancelEdit(editingId);
+
+  editingId = id;
+  expandedIds.add(id);
+  saveExpanded();
+
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (!row) return;
+  row.classList.add('expanded');
+  bringToFront(row);
+
+  const detail = row.querySelector('.inst-detail');
+  detail.innerHTML = buildDetailHTML(inst, true);
+  initSocksToggle(detail, id);
+
+  const hdr = row.querySelector('.inst-header');
+  hdr.innerHTML = buildHeaderHTML(inst);
+
+  const nameInput = detail.querySelector('[name="name"]');
+  if (nameInput) setTimeout(() => nameInput.focus(), 50);
+
+  updateContainerHeight();
+}
+
+function cancelEdit(id) {
+  const wasEditing = editingId === id;
+  editingId = null;
+
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (!row || !wasEditing) return;
+
+  const inst = instances.find(i => i.id === id);
+  if (!inst) return;
+
+  const detail = row.querySelector('.inst-detail');
+  detail.innerHTML = buildDetailHTML(inst, false);
+
+  const hdr = row.querySelector('.inst-header');
+  hdr.innerHTML = buildHeaderHTML(inst);
+
+  updateContainerHeight();
+}
+
+async function saveEdit(id) {
+  const row = container.querySelector(`.inst-row[data-id="${id}"]`);
+  if (!row) return;
+  const detail = row.querySelector('.inst-detail');
+  const config = readFormConfig(detail);
+  const autoStart = detail.querySelector('[name="auto_start"]').value === '1';
+
+  setFormBusy(detail, true);
+  clearFormError(detail);
+
+  try {
+    const data = await apiPut(`/api/instances/${id}`, { config, auto_start: autoStart });
+    if (data.ok) {
+      editingId = null;
+      await fetchInstances();
+    } else {
+      showFormError(detail, data.error || 'Unknown error');
+    }
+  } catch (e) {
+    showFormError(detail, 'Network error: ' + e.message);
+  } finally {
+    setFormBusy(detail, false);
+  }
+}
+
+// ── New instance ─────────────────────────────────────────────────────────
+function showNewForm() {
+  if (newCard) return; // already open
+  if (editingId !== null) cancelEdit(editingId);
+
+  // Fake inst object with defaults so buildDetailHTML can render
+  const fakeInst = {
+    id: 'new',
+    state: 'stopped',
+    auto_start: false,
+    config: Object.assign({}, DEFAULTS, { connector: Object.assign({}, DEFAULTS.connector) }),
+    error: null,
+  };
+
+  const row = document.createElement('div');
+  row.className = 'inst-row new-instance expanded';
+  row.dataset.id = 'new';
+
+  // Header: green title, no status dot / chevron buttons
+  const hdr = document.createElement('div');
+  hdr.className = 'inst-header';
+  hdr.innerHTML = `
+    <span class="inst-chevron" style="visibility:hidden">&#9654;</span>
+    <span class="inst-status" style="background:var(--green)"></span>
+    <span class="inst-name" style="color:var(--green)">New Instance</span>
+  `;
+  row.appendChild(hdr);
+
+  const detail = document.createElement('div');
+  detail.className = 'inst-detail';
+  detail.innerHTML = buildDetailHTML(fakeInst, true, true);
+  row.appendChild(detail);
+
+  const pos = centerPosition();
+  row.style.left = pos.x + 'px';
+  row.style.top  = pos.y + 'px';
+
+  container.appendChild(row);
+  newCard = row;
+
+  initSocksToggle(detail, 'new');
+  initDrag(row, 'new');
+  bringToFront(row);
+  updateContainerHeight();
+  emptyHint.style.display = 'none';
+
+  const nameInput = detail.querySelector('[name="name"]');
+  if (nameInput) setTimeout(() => nameInput.focus(), 50);
+}
+
+function hideNewForm() {
+  if (!newCard) return;
+  newCard.remove();
+  newCard = null;
+  openSections.delete('socks-new');
+  render();
+}
+
+async function saveNew() {
+  if (!newCard) return;
+  const detail = newCard.querySelector('.inst-detail');
+  const config = readFormConfig(detail);
+  const autoStart = detail.querySelector('[name="auto_start"]').value === '1';
+
+  setFormBusy(detail, true);
+  clearFormError(detail);
+
+  try {
+    const data = await apiPost('/api/instances', { config, auto_start: autoStart });
+    if (data.ok) {
+      hideNewForm();
+      await fetchInstances();
+    } else {
+      showFormError(detail, data.error || 'Unknown error');
+    }
+  } catch (e) {
+    showFormError(detail, 'Network error: ' + e.message);
+  } finally {
+    setFormBusy(detail, false);
+  }
+}
+
+// ── Form helpers ─────────────────────────────────────────────────────────
+function initSocksToggle(el, id) {
+  const btn = el.querySelector('[data-socks-toggle]');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const root = btn.closest('.inst-detail');
+    const hidden = root && root.querySelector('[name="socks_enabled"]');
+    if (!hidden) return;
+    const nowOn = hidden.value !== '1';
+    hidden.value = nowOn ? '1' : '0';
+    btn.classList.toggle('enc-on', nowOn);
+    const body = root.querySelector('.socks5-body');
+    if (body) body.style.display = nowOn ? 'block' : 'none';
+    // keep openSections in sync so re-render preserves state
+    const key = `socks-${id}`;
+    if (nowOn) openSections.add(key); else openSections.delete(key);
+  });
+}
+
+function readFormConfig(el) {
+  const val = (name) => el.querySelector(`[name="${name}"]`)?.value?.trim() || '';
+  const tog = (name) => el.querySelector(`[name="${name}"]`)?.value === '1';
+
+  return {
+    name: val('name'),
+    server: val('server'),
+    listen_addr: val('listen_addr'),
+    proxy_host: val('proxy_host'),
+    client_version: val('client_version'),
+    encrypted: tog('encrypted'),
+    raw_log: tog('raw_log'),
+    connector: {
+      socks5_enabled: tog('socks_enabled'),
+      socks5_addr: val('socks5_addr') || null,
+      socks5_user: val('socks5_user') || null,
+      socks5_pass: val('socks5_pass') || null,
+    },
+  };
+}
+
+function setFormBusy(el, busy) {
+  for (const btn of el.querySelectorAll('.detail-bottom .btn')) btn.disabled = busy;
+}
+
+function showFormError(el, msg) {
+  const fe = el.querySelector('.form-error');
+  if (fe) { fe.textContent = msg; fe.classList.add('visible'); }
+}
+
+function clearFormError(el) {
+  const fe = el.querySelector('.form-error');
+  if (fe) { fe.textContent = ''; fe.classList.remove('visible'); }
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────
+async function doStart(id) {
+  try {
+    await apiPost(`/api/instances/${id}/start`);
+  } catch (_) {}
+  await fetchInstances();
+}
+
+async function doStop(id) {
+  try {
+    await apiPost(`/api/instances/${id}/stop`);
+  } catch (_) {}
+  await fetchInstances();
+}
+
+async function doDelete(id) {
+  const inst = instances.find(i => i.id === id);
+  const label = inst ? (inst.config.name || `#${id}`) : `#${id}`;
+  if (!confirm(`Delete instance "${label}"? This cannot be undone.`)) return;
+
+  try {
+    const data = await apiDelete(`/api/instances/${id}`);
+    if (data.ok) {
+      expandedIds.delete(id);
+      desktopIds.delete(id);
+      if (editingId === id) editingId = null;
+      removeCardPosition(id);
+      saveExpanded();
+      saveDesktop();
+    }
+  } catch (_) {}
+  await fetchInstances();
+}
+
+// ── Toggle-button checkboxes ──────────────────────────────────────────────
+const TOGGLE_ON_CLASS = { encrypted: 'enc-on', raw_log: 'raw-on', auto_start: 'auto-on' };
+function toggleBtnCheck(btn, name) {
+  if (btn.hasAttribute('data-ro')) return;
+  const root = btn.closest('.inst-detail');
+  const hidden = root && root.querySelector(`[name="${name}"]`);
+  if (!hidden) return;
+  const nowOn = hidden.value !== '1';
+  hidden.value = nowOn ? '1' : '0';
+  btn.classList.toggle(TOGGLE_ON_CLASS[name] || '', nowOn);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Events ───────────────────────────────────────────────────────────────
+btnNew.addEventListener('click', showNewForm);
+btnRefresh.addEventListener('click', () => { fetchInstances(); startPolling(); });
+
+// ── Start ────────────────────────────────────────────────────────────────
+expandedIds = loadExpanded();
+desktopIds  = loadDesktop();
+fetchInstances().then(() => startPolling());
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[package]
+name = "client-example"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "client-example"
+path = "main.rs"
+
+[dependencies]
+u-core    = { path = "../../u-core" }
+packets   = { path = "../../packets" }
+network   = { path = "../../network", features = ["proxy"] }
+protocol  = { path = "../../protocol" }
+common    = { path = "../common" }
+tokio     = { version = "1.51.1", features = ["full"] }
+log       = "0.4.29"

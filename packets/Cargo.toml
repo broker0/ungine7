@@ -1,0 +1,18 @@
+[package]
+name = "packets"
+
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+serde = ["u-io/serde", "dep:serde", "dep:serde_json"]
+
+[dependencies]
+u-core = { path = "../u-core" }
+macros = { path = "../macros" }
+u-io = { path = "../u-io" }
+bytes = "1"
+miniz_oxide = "0.8"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }

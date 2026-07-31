@@ -1,0 +1,25 @@
+[package]
+name = "framework"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[features]
+serde = ["dep:serde", "packets/serde"]
+lua = ["dep:mlua", "dep:macros", "dep:notify", "dep:tokio-util"]
+
+[dependencies]
+u-core      = { path = "../u-core" }
+files       = { path = "../files" }
+packets     = { path = "../packets" }
+macros      = { path = "../macros", optional = true }
+log         = "0.4.29"
+bytes       = "1"
+serde       = { version = "1", features = ["derive"], optional = true }
+tokio       = { version = "1", features = ["sync", "time", "macros", "rt"] }
+mlua        = { version = "0.10", features = ["lua54", "send", "vendored", "async"], optional = true }
+notify      = { version = "7", optional = true }
+tokio-util  = { version = "0.7", optional = true }
+
+[dev-dependencies]
+u-io = { path = "../u-io" }

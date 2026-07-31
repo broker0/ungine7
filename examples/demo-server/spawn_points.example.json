@@ -1,0 +1,104 @@
+{
+  "templates": {
+    "orc": {
+      "graphic": 17,
+      "name": "an orc",
+      "color": 0,
+      "notoriety": 6,
+      "hits": 80,
+      "str_": 60,
+      "dex": 50,
+      "int_": 30,
+      "items": [
+        { "graphic": 5049, "layer": 1, "color": 0 },
+        { "graphic": 5068, "layer": 13, "color": 0 },
+        { "graphic": 3934, "layer": 2, "color": 0 }
+      ],
+      "aggro_range": 10,
+      "leash_range": 20,
+      "damage_min": 8,
+      "damage_max": 18,
+      "swing_delay_ms": 2500
+    },
+    "skeleton": {
+      "graphic": 50,
+      "name": "a skeleton",
+      "notoriety": 6,
+      "hits": 50,
+      "aggro_range": 8,
+      "leash_range": 15,
+      "damage_min": 4,
+      "damage_max": 12,
+      "swing_delay_ms": 3000
+    },
+    "troll": {
+      "graphic": 210,
+      "name": "a troll",
+      "notoriety": 6,
+      "hits": 120,
+      "str_": 90,
+      "aggro_range": 8,
+      "leash_range": 18,
+      "damage_min": 12,
+      "damage_max": 25,
+      "swing_delay_ms": 3000
+    }
+  },
+  "points": [
+    {
+      "id": "britain-orcs",
+      "map_id": 0,
+      "x": 1440,
+      "y": 1700,
+      "z": 0,
+      "radius": 6,
+      "template": "orc",
+      "max_count": 2,
+      "respawn_delay_ms": 15000
+    },
+    {
+      "id": "britain-skeletons",
+      "map_id": 0,
+      "x": 1445,
+      "y": 1705,
+      "z": 0,
+      "radius": 5,
+      "template": "skeleton",
+      "max_count": 2,
+      "respawn_delay_ms": 20000
+    },
+    {
+      "id": "britain-troll",
+      "map_id": 0,
+      "x": 1450,
+      "y": 1710,
+      "z": 0,
+      "radius": 4,
+      "template": "troll",
+      "max_count": 1,
+      "respawn_delay_ms": 30000
+    },
+    {
+      "id": "world1-orcs",
+      "map_id": 1,
+      "x": 1440,
+      "y": 1700,
+      "z": 0,
+      "radius": 8,
+      "template": "orc",
+      "max_count": 3,
+      "respawn_delay_ms": 15000
+    },
+    {
+      "id": "world1-trolls",
+      "map_id": 1,
+      "x": 1460,
+      "y": 1720,
+      "z": 0,
+      "radius": 6,
+      "template": "troll",
+      "max_count": 2,
+      "respawn_delay_ms": 25000
+    }
+  ]
+}

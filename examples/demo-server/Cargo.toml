@@ -1,0 +1,47 @@
+[package]
+name = "demo-server"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "demo-server"
+path = "main.rs"
+
+[features]
+# `lua` enables the Lua runtime and, with it, the runtime-selectable `lua`
+# and `controller` session modes.  Without `lua` only the built-in `rust`
+# session mode is available.  Session mode is chosen per-session at runtime
+# (see `game_session::SessionMode`) — it is no longer a compile-time choice.
+default = ["lua", "mirror"]
+lua = ["dep:mlua", "dep:notify", "dep:tokio-util", "common/lua", "framework/lua"]
+# `mirror` adds an optional WebSocket endpoint (`/ws/mirror`) that accepts
+# raw S2C UO packets and ingests them into the demo-server's world.
+# Enable at build time with: cargo build --features mirror
+# At runtime, activate with: --mirror-port <PORT>
+mirror = ["dep:axum"]
+
+[dependencies]
+u-core     = { path = "../../u-core" }
+network    = { path = "../../network" }
+protocol   = { path = "../../protocol" }
+packets    = { path = "../../packets" }
+files      = { path = "../../files" }
+common     = { path = "../common" }
+framework  = { path = "../../framework" }
+tokio      = { version = "1", features = ["full"] }
+log        = "0.4"
+clap       = { version = "4", features = ["derive"] }
+async-trait = "0.1"
+rand       = "0.9"
+bytes      = "1"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Optional: Lua scripting
+mlua       = { version = "0.10", features = ["lua54", "send", "vendored", "async"], optional = true }
+notify     = { version = "7", optional = true }
+tokio-util = { version = "0.7", optional = true }
+
+# Optional: mirror WebSocket endpoint
+axum       = { version = "0.8", features = ["ws"], optional = true }

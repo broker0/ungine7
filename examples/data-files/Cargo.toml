@@ -1,0 +1,15 @@
+[package]
+name = "data-files"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "data-files"
+path = "main.rs"
+
+[dependencies]
+files = { path = "../../files" }
+common = { path = "../common" }
+clap = { version = "4", features = ["derive"] }
+log = "0.4.29"

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Path Server</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 13px;
+      }
+      h3 { color: #9cdcfe; margin: 16px 0 6px; }
+      h4 { color: #ce9178; margin: 10px 0 4px; }
+      input[type=text], input[type=number], select, textarea {
+        background: #2d2d2d;
+        border: 1px solid #555;
+        color: #d4d4d4;
+        padding: 3px 6px;
+        border-radius: 3px;
+      }
+      input[type=button] {
+        background: #0e639c;
+        border: none;
+        color: #fff;
+        padding: 5px 14px;
+        border-radius: 3px;
+        cursor: pointer;
+        margin: 2px 0;
+      }
+      input[type=button]:hover { background: #1177bb; }
+      .short { width: 7ch; }
+      .vis-short { width: 10ch; }
+      label.cb { cursor: pointer; user-select: none; }
+      #container { display: flex; gap: 20px; align-items: flex-start; }
+      .column { flex: 1; min-width: 320px; }
+      .column-map { flex: 2; min-width: 320px; overflow: auto; }
+      #map-img { border: 1px solid #555; image-rendering: pixelated; display: block; }
+      #log {
+        margin-top: 10px;
+        background: #111;
+        border: 1px solid #444;
+        padding: 6px;
+        font-size: 11px;
+        font-family: monospace;
+        height: 120px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        color: #7fba00;
+      }
+    </style>
+    <script>
+      // ── API helpers ──────────────────────────────────────────────────────
+
+      function api_json(payload) {
+        return fetch('/api/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(r => r.json());
+      }
+
+      // Returns ArrayBuffer (binary PNG from /api/render/)
+      function api_render(payload) {
+        return fetch('/api/render/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(r => r.arrayBuffer());
+      }
+
+      function show_image(buffer) {
+        var blob = new Blob([buffer], { type: 'image/png' });
+        var img = document.getElementById('map-img');
+        // Revoke previous object URL to free memory
+        if (img._objectUrl) { URL.revokeObjectURL(img._objectUrl); }
+        var url = URL.createObjectURL(blob);
+        img._objectUrl = url;
+        img.src = url;
+      }
+
+      function log_msg(msg) {
+        var el = document.getElementById('log');
+        el.textContent += msg + '\n';
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function get_int(id) {
+        var v = document.getElementById(id).value.trim();
+        return v === '' ? null : parseInt(v, 10);
+      }
+      function get_int_or(id, def) {
+        var v = get_int(id);
+        return v === null ? def : v;
+      }
+      function get_str(id) { return document.getElementById(id).value.trim(); }
+      function get_json(id) {
+        try { return JSON.parse(document.getElementById(id).value); }
+        catch(e) { log_msg('JSON parse error in #' + id + ': ' + e); return null; }
+      }
+
+      // ── Start ────────────────────────────────────────────────────────────
+
+      function start() {
+
+        // Toggle visual options visibility
+        document.getElementById('visualize').onchange = function() {
+          document.getElementById('vis_opts').style.display = this.checked ? '' : 'none';
+        };
+
+        document.getElementById('world_clear').onclick = function() {
+          api_json({"WorldClear": {}}).then(r => log_msg('WorldClear: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('world_load').onclick = function() {
+          api_json({"WorldLoad": {"file_name": get_str('file_name')}})
+            .then(r => log_msg('WorldLoad: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('world_save').onclick = function() {
+          api_json({"WorldSave": {"file_name": get_str('file_name')}})
+            .then(r => log_msg('WorldSave: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('items_add').onclick = function() {
+          var items = get_json('items_json');
+          if (!items) return;
+          api_json({"ItemsAdd": {"world": get_int_or('world', 0), "items": items}})
+            .then(r => log_msg('ItemsAdd: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('items_del').onclick = function() {
+          var serials = get_json('serials_json');
+          if (!serials) return;
+          api_json({"ItemsDel": {"world": get_int_or('world', 0), "serials": serials}})
+            .then(r => log_msg('ItemsDel: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('btn_query').onclick = function() {
+          api_json({"Query": {"world": get_int_or('world', 0)}})
+            .then(r => log_msg('Query: ' + JSON.stringify(r)));
+        };
+
+        document.getElementById('trace_path').onclick = function() {
+          var opts = get_json('options');
+          if (!opts) return;
+
+          var world = get_int_or('world', 0);
+          var visual = document.getElementById('visualize').checked;
+
+          var reqData = {
+            "world": world,
+            "sx": get_int_or('sx', 2155),
+            "sy": get_int_or('sy', 3618),
+            "sz": get_int_or('sz', 0),
+            "dx": get_int_or('dx', 3425),
+            "dy": get_int_or('dy', 105),
+            "dz": get_int_or('dz', 0),
+            "options": opts
+          };
+
+          // Add visual parameters when visualization is enabled
+          if (visual) {
+            var stepDelay = get_int_or('step_delay', 200);
+            var batchInterval = get_int_or('batch_interval', 50);
+            reqData['step_delay_us'] = stepDelay;
+            reqData['batch_interval_ms'] = batchInterval;
+          }
+
+          var cmdName = visual ? 'TracePathVisual' : 'TracePath';
+          var traceReq = {};
+          traceReq[cmdName] = reqData;
+
+          log_msg(cmdName + ' request sent' + (visual ? ' (visual)' : '') + '…');
+          api_json(traceReq).then(function(reply) {
+            var tr = reply['TraceReply'];
+            if (!tr) { log_msg('Error: ' + JSON.stringify(reply)); return; }
+
+            var msg = cmdName + ': ' + tr['points'].length + ' points, success=' + tr['success'];
+            if (tr['visual']) {
+              msg += ' | vis: ' + tr['visual']['frontier_count'] + ' frontier, '
+                   + tr['visual']['visited_count'] + ' visited, '
+                   + tr['visual']['path_count'] + ' path, '
+                   + tr['visual']['total_spawned'] + ' spawned, '
+                   + tr['visual']['total_removed'] + ' removed';
+            }
+            log_msg(msg);
+
+            // color: null → Z-brightness (color==-1 in original), integer → fixed RGB
+            // For all_points mode use null (gradient), for path use magenta (0xFF00FF)
+            var color = opts['all_points'] ? null : 0xFF00FF;
+
+            // Render bounds: explicit fields if set, otherwise let server auto-compute from points
+            var renderPayload = {
+              "world": world,
+              "points": tr['points'],
+              "color": color
+            };
+            var left = get_int('left');
+            var top  = get_int('top');
+            var right  = get_int('right');
+            var bottom = get_int('bottom');
+            if (left   !== null) renderPayload['left']   = left;
+            if (top    !== null) renderPayload['top']    = top;
+            if (right  !== null) renderPayload['right']  = right;
+            if (bottom !== null) renderPayload['bottom'] = bottom;
+
+            api_render(renderPayload).then(function(buffer) {
+              show_image(buffer);
+              log_msg('RenderArea: image updated (' + buffer.byteLength + ' bytes)');
+            });
+          });
+        };
+      }
+    </script>
+  </head>
+  <body onload="start()">
+    <div id="container">
+
+      <!-- ── Left column ───────────────────────────────────────────── -->
+      <div class="column">
+
+        <h3>World management</h3>
+        <input type="button" value="Clear" id="world_clear">
+        <input type="button" value="Load"  id="world_load">
+        <input type="button" value="Save"  id="world_save">
+        &nbsp;file: <input id="file_name" value="world.json" style="width:18ch">
+
+        <h3>Items</h3>
+        <h4>Add items (JSON array)</h4>
+        <textarea id="items_json" cols="56" rows="3">
+[{"serial": 1073741825, "graphic": 3917, "x": 2155, "y": 3618, "z": 0}]
+        </textarea><br>
+        <input type="button" value="Add Items"    id="items_add">
+        &nbsp;
+        <input type="button" value="Query Store"  id="btn_query">
+
+        <h4>Delete items (serial array)</h4>
+        <textarea id="serials_json" cols="30" rows="2">[1073741825]</textarea><br>
+        <input type="button" value="Delete Items" id="items_del">
+
+        <h3>Pathfinding</h3>
+
+        <h4>World</h4>
+        <select id="world">
+          <option value="0">0 — Felucca</option>
+          <option value="1">1 — Trammel</option>
+          <option value="2">2 — Ilshenar</option>
+          <option value="3">3 — Malas</option>
+          <option value="4">4 — Tokuno</option>
+          <option value="5">5 — Ter Mur</option>
+        </select>
+
+        <h4>Start position</h4>
+        x:<input id="sx" class="short" value="2155">
+        y:<input id="sy" class="short" value="3618">
+        z:<input id="sz" class="short" value="0">
+
+        <h4>End position</h4>
+        x:<input id="dx" class="short" value="3425">
+        y:<input id="dy" class="short" value="105">
+        z:<input id="dz" class="short" value="0">
+
+        <h4>Render bounds (blank = auto from path ±100)</h4>
+        left:<input id="left" class="short" value="">
+        top:<input id="top" class="short" value="">
+        right:<input id="right" class="short" value="">
+        bottom:<input id="bottom" class="short" value="">
+
+        <h4>Trace options</h4>
+        <textarea id="options" cols="56" rows="20">
+{
+  "allow_diagonal_move": true,
+
+  "heuristic_distance": "Diagonal",
+  "heuristic_straight": 5,
+  "heuristic_diagonal": 5,
+
+  "cost_turn": 1,
+  "cost_move_straight": 1,
+  "cost_move_diagonal": 1,
+  "cost_move_multi": 0,
+
+  "accuracy_x": 0,
+  "accuracy_y": 0,
+  "accuracy_z": 0,
+
+  "fly": false,
+  "passable_mask": 0,
+
+  "all_points": false,
+  "time_limit": 5000
+}
+        </textarea><br>
+        <label class="cb"><input type="checkbox" id="visualize"> Visualize in UO client (spawn markers)</label><br>
+        <span id="vis_opts" style="display:none">
+          step delay (us):<input id="step_delay" class="vis-short" value="200">
+          batch (ms):<input id="batch_interval" class="vis-short" value="50">
+        </span>
+        <br>
+        <input type="button" value="Search path!" id="trace_path">
+
+        <div id="log"></div>
+      </div>
+
+      <!-- ── Right column: map ─────────────────────────────────────── -->
+      <div class="column-map">
+        <h3>Map / path result</h3>
+        <img id="map-img" src="" alt="(no image yet)">
+      </div>
+
+    </div>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+[package]
+name = "proxy-example"
+version = "0.1.0"
+edition = "2024"
+publish.workspace = true
+
+[[bin]]
+name = "proxy"
+path = "main.rs"
+
+[dependencies]
+u-core    = { path = "../../u-core" }
+packets   = { path = "../../packets", default-features = false, features = [] }
+protocol  = { path = "../../protocol", default-features = false, features = [] }
+common    = { path = "../common" }
+tokio     = { version = "1.51.1", features = ["full"] }
+log       = "0.4.29"
+anyhow    = "1.0.102"
