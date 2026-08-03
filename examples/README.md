@@ -64,11 +64,20 @@ map state.
 
 ## Advanced reference
 
-- **[`demo-server`](demo-server)** (package: `demo-server`) — a large, fairly
-  developed local game server: combat, crafting, housing, taming, magic,
-  vendors, ships, Lua-scripted controllers/sessions, world snapshot
-  save/restore. Best used as a reference for wiring the framework's systems
-  together, not as a turnkey deployment.
+### demo-server — the biggest example, exercising nearly everything
+
+Package: `demo-server`
+
+By far the largest example in the workspace — a local UO server touching
+almost every framework capability, plus a distinctive three-layer Lua
+scripting subsystem (async worker scripts, coroutine-based entity
+controllers, and per-session scripts) with hot-reload and a session mode
+switchable **at runtime** per connection. It is also, explicitly, the least
+finished example — skills don't train, ships don't sail yet, and several
+systems are intentionally minimal placeholders.
+
+See [`demo-server/README.md`](demo-server/README.md) for the full feature
+list, the scripting subsystem, and known limitations.
 
 ## Servers & Clients (tests / references)
 

@@ -17,11 +17,36 @@ them:
   rendered as a gump inside the real UO client.
 - **A pathfinding + line-of-sight microservice** that can mirror the live
   world of any real server it's pointed at, and expose it over HTTP/WebSocket.
+- **Runtime-switchable Lua scripting** (in the `demo-server` example) — async
+  worker scripts, coroutine-based entity controllers, and per-session
+  scripts, all hot-reloadable, with the session mode chosen per connection
+  at runtime. See [`examples/demo-server/README.md`](examples/demo-server/README.md).
 
 ![web-proxy: live packet inspector](examples/web-proxy.png)
 
 See [`examples/README.md`](examples/README.md) for the full list, more
 screenshots, and how to run each one.
+
+## Building
+
+Requires a recent stable Rust toolchain with **edition 2024** support
+(Rust 1.85+), and a C compiler toolchain on the build machine (needed to
+build the vendored Lua runtime used by `demo-server`'s `lua` feature).
+
+```powershell
+# Build every crate and example in the workspace
+cargo build --workspace
+
+# Release profile (recommended for the proxies/servers)
+cargo build --workspace --release
+
+# Build/run just one example
+cargo run -p web-proxy --release -- --help
+```
+
+Some examples gate extra functionality behind Cargo features that are on by
+default (e.g. `demo-server`'s `lua` and `mirror` features) — see each
+example's own docs for details.
 
 ## Workspace crates
 
